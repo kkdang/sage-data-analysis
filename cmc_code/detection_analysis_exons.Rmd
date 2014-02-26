@@ -1,0 +1,107 @@
+Detection analysis on exon counts for common mind phase I RNAseq data
+========================================================
+
+Load synapse and Ensembl exon counts file.
+
+```{r cache=TRUE, warning=FALSE,results='hide'}
+library('synapseClient')
+synapseLogin()
+dataFile = synGet('syn2342352')
+metaFile = synGet('syn2299154')
+```
+
+```{r cache=TRUE}
+exonCounts  = read.delim(dataFile@filePath, header=T, row.names = 1)
+metadata = read.csv(getFileLocation(metaFile))
+```
+
+```{r warning=FALSE}
+source('rnaseq_analysis_functions.R')
+```
+
+Which samples are repeated in the input file?
+
+```{r}
+which(table(metadata$DLPFC_RNA_isolation..Sample.RNA.ID) > 1)
+```
+
+Make final dataset, with bad samples excluded. 
+
+```{r}
+#colnames(metadata)
+metadata_freeze = metadata[-which(metadata$DLPFC_RNA_report..Exclude. == 1),]
+total_samples = nrow(metadata_freeze)
+table(metadata_freeze$DLPFC_RNA_report..Exclude.)
+metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID = factor(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
+
+metadata_freeze = metadata_freeze[order(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID),]
+exonCounts_freeze = exonCounts[,which(as.factor(colnames(exonCounts)) %in% metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)]
+exonCounts_freeze = exonCounts_freeze[,order(as.factor(colnames(exonCounts_freeze)))]
+
+head(colnames(exonCounts_freeze))
+head(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
+tail(colnames(exonCounts_freeze))
+tail(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
+```
+Detection analysis of expression levels, all biotypes together.
+---------------------------------------------------------------
+
+```{r fig.height=4, fig.width=4}
+exon_lengths = read.delim('Hsapiens_GRCh37_70_processed_dex.lengths', header=FALSE)
+hist(log10(exon_lengths[,2]), main='Distribution of exon lengths')
+```
+
+Looking at control samples only.
+
+```{r echo=c(2:6), fig.height=6, fig.width=6}
+library('edgeR')
+table(metadata_freeze$Dx)
+data.dge = DGEList(counts=exonCounts_freeze[,1:total_samples],group=factor(metadata_freeze$Dx), remove.zeros=TRUE)
+#data.dge = calcNormFactors(data.dge)
+control.dge = data.dge[,which(data.dge$samples$group == "Control")]
+control_exon_means = rowMeans(rpkm(control.dge, gene.length=exon_lengths[match(rownames(getCounts(control.dge)), exon_lengths[,1]),2], log=TRUE,normalized.lib.sizes=TRUE))
+hist(control_exon_means, main = "exon averages across samples\ncontrol samples only", col = "thistle", breaks = 50)
+```
+
+Separate into high/med/low expression datasets.
+
+```{r}
+range(control_exon_means, na.rm = TRUE)
+lowExpress = which(control_exon_means < -5)
+highExpress = which(control_exon_means > 5)
+medExpress_temp = which(control_exon_means >= -5)
+medExpress = setdiff(medExpress_temp, highExpress)
+sum(length(lowExpress), length(highExpress), length(medExpress))
+rm(medExpress_temp)
+
+control_high.dge = control.dge[highExpress,]
+control_med.dge = control.dge[medExpress,]
+control_low.dge = control.dge[lowExpress,]
+
+control_high_detect = apply(getCounts(control_high.dge), MARGIN=2, FUN=countDetected)
+control_med_detect = apply(getCounts(control_med.dge), MARGIN=2, FUN=countDetected)
+control_low_detect = apply(getCounts(control_low.dge), MARGIN=2, FUN=countDetected)
+```
+
+Plot relationships between fraction detected and mapped reads by expression level.
+
+```{r}
+#low
+plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_low_detect/length(lowExpress), main = paste("detection of low-expression exons", "\nn=", length(lowExpress), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected", ylim = range(0,1))
+lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_low_detect/length(lowExpress)), col = "blue", lwd = 2)    
+cor.test(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_low_detect)
+summary(lm(control_low_detect/length(lowExpress) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")]))
+
+# medium
+plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_med_detect/length(medExpress), main = paste("detection of med-expression exons", "\nn=", length(medExpress), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected", ylim = range(0,1))
+lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_med_detect/length(medExpress)), col = "blue", lwd = 2)    
+cor.test(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_med_detect)
+summary(lm(control_med_detect/length(medExpress) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")]))
+
+
+# high
+plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_high_detect/length(highExpress), main = paste("detection of high-expression exons", "\nn=", length(highExpress), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected", ylim = range(0,1))
+lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_high_detect/length(highExpress)), col = "blue", lwd = 2)    
+cor.test(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")], control_high_detect)
+summary(lm(control_high_detect/length(highExpress) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)[which(metadata_freeze$Dx == "Control")]))
+```
