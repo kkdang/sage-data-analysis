@@ -1,0 +1,155 @@
+Functional profiles of control samples
+========================================================
+
+Load synapse and samples metadata file.
+```{r cache=TRUE, warning=FALSE,results='hide'}
+library('synapseClient')
+synapseLogin()
+dataFile = synGet('syn2340130')
+metaFile = synGet('syn2299154')
+```
+
+```{r cache=TRUE}
+geneCounts  = read.delim(dataFile@filePath, header=T, row.names = 1)
+metadata = read.csv(getFileLocation(metaFile))
+```
+
+```{r warning=FALSE}
+setwd('~/Computing/commonmind/analysis/')
+source('~/Computing/rnaseq_analysis_functions.R')
+```
+
+Make final dataset, with bad samples excluded. 
+
+```{r}
+#colnames(metadata)
+metadata_freeze = metadata[-which(metadata$DLPFC_RNA_report..Exclude. == 1),]
+total_samples = nrow(metadata_freeze)
+table(metadata_freeze$DLPFC_RNA_report..Exclude.)
+metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID = factor(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
+
+metadata_freeze = metadata_freeze[order(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID),]
+geneCounts_freeze = geneCounts[,which(as.factor(colnames(geneCounts)) %in% metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)]
+geneCounts_freeze = geneCounts_freeze[,order(as.factor(colnames(geneCounts_freeze)))]
+
+head(colnames(geneCounts_freeze))
+head(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
+tail(colnames(geneCounts_freeze))
+tail(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
+```
+
+
+Functional profiles of genes detected in control samples
+--------------------------------------------------------
+
+Make dataset: select control samples, assign Entrez IDs and exclude those without Entrez
+```{r echo=FALSE, warning=FALSE}
+require(goProfiles)
+```
+```{r}
+# get control samples only
+table(metadata_freeze$Dx)
+controlCounts_freeze = geneCounts_freeze[,which(metadata_freeze$Dx == "Control")]
+
+# assign Entrez ID to genes
+temp = addEntrez(inCounts=controlCounts_freeze)
+toRemove = which(is.na(temp$entrez))
+controlCounts_entrez = temp[-toRemove,]
+rm(temp, controlCounts_freeze)
+```
+
+Make three versions of the dataset where minimum reads required for detection is varied from 2:4.
+```{r fig.height=4, fig.width=4}
+detected_control = apply(controlCounts_entrez, MARGIN=1, FUN=countDetected)
+# This plot concerns me a bit...many genes detected by very few samples only, then a large number mostly detected by all. The rest could be noise?
+hist(detected_control, col = "papayawhip")
+
+detected3_control = apply(controlCounts_entrez, MARGIN=1, FUN=countDetected, filter=3)
+hist(detected3_control, col = "papayawhip")
+
+detected4_control = apply(controlCounts_entrez, MARGIN=1, FUN=countDetected, filter=4)
+hist(detected4_control, col = "papayawhip")
+```
+
+Function profile plots using GO
+---------------------------------------
+
+GO "Cellular Component" ontology, level 2
+```{r}
+brain.cc.profiles = basicProfile(genelist=detected_control,onto="CC",level=2,orgPackage="org.Hs.eg.db")
+print(brain.cc.profiles, percentage=TRUE)
+plotProfiles(brain.cc.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+
+brain.cc.profiles.d4 = basicProfile(genelist=detected4_control,onto="CC",level=2,orgPackage="org.Hs.eg.db")
+brain.cc.d2d4 = mergeProfilesLists(brain.cc.profiles, brain.cc.profiles.d4, profNames = c("min.2", "min.4"))
+plotProfiles(brain.cc.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend = TRUE)
+```
+
+GO "Cellular Component" ontology, level 3
+```{r, fig.height=8, fig.width=8}
+brain.cc3.profiles = basicProfile(genelist=detected_control,onto="CC",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#print(brain.cc3.profiles, percentage=TRUE)
+brain.cc3.profiles.d4 = basicProfile(genelist=detected4_control,onto="CC",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+brain.cc3.d2d4 = mergeProfilesLists(brain.cc3.profiles, brain.cc3.profiles.d4, profNames = c("min.2", "min.4"))
+plotProfiles(brain.cc3.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend=TRUE)
+```
+
+GO "Cellular Component" ontology, level 4
+```{r, fig.height=9, fig.width=9}
+brain.cc4.profiles = basicProfile(genelist=detected_control,onto="CC",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#print(brain.cc4.profiles, percentage=TRUE)
+par(cex=0.6)
+plotProfiles(brain.cc4.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+par(cex=1)
+```
+
+GO "Biological Process" ontology, level 2
+```{r}
+brain.bp.profiles = basicProfile(genelist=detected_control,onto="BP",level=2,orgPackage="org.Hs.eg.db")
+print(brain.bp.profiles, percentage=TRUE)
+plotProfiles(brain.bp.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+```
+
+GO "Biological Process" ontology, level 3
+```{r fig.height=9, fig.width=9}
+brain.bp3.profiles = basicProfile(genelist=detected_control,onto="BP",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#print(brain.bp3.profiles, percentage=TRUE)
+par(cex=0.7)
+plotProfiles(brain.bp3.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+par(cex=1)
+```
+
+GO "Biological Process" ontology, level 4
+```{r}
+brain.bp4.profiles = basicProfile(genelist=detected_control,onto="BP",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#print(brain.bp4.profiles, percentage=TRUE)
+#plotProfiles(brain.bp4.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+```
+
+GO "Molecular Function" ontology, level 2
+```{r}
+brain.mf.profiles = basicProfile(genelist=detected_control,onto="MF",level=2,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+print(brain.mf.profiles, percentage=TRUE)
+plotProfiles(brain.mf.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+brain.mf.profiles.d4 = basicProfile(genelist=detected4_control,onto="MF",level=2,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+brain.mf.d2d4 = mergeProfilesLists(brain.mf.profiles, brain.mf.profiles.d4, profNames = c("min.2", "min.4"))
+plotProfiles(brain.mf.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend=TRUE)
+```
+
+GO "Molecular Function" ontology, level 3
+```{r, fig.height=8, fig.width=8}
+brain.mf3.profiles = basicProfile(genelist=detected_control,onto="MF",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#print(brain.mf3.profiles, percentage=TRUE)
+plotProfiles(brain.mf3.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+brain.mf3.profiles.d4 = basicProfile(genelist=detected4_control,onto="MF",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+brain.mf3.d2d4 = mergeProfilesLists(brain.mf3.profiles, brain.mf3.profiles.d4, profNames = c("min.2", "min.4"))
+plotProfiles(brain.mf3.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend=TRUE)
+```
+
+GO "Molecular Function" ontology, level 4
+```{r, fig.height=10, fig.width=10}
+brain.mf4.profiles = basicProfile(genelist=detected_control,onto="MF",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#print(brain.mf4.profiles, percentage=TRUE)
+par(cex=0.8)
+plotProfiles(brain.mf4.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+```
