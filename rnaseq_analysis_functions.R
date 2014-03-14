@@ -29,7 +29,7 @@ getGenesForGOOffspring=function(go_acc,go="CC"){
   temp = switch(go,
                 CC = as.list(GOCCOFFSPRING),
                 BP = as.list(GOBPOFFSPRING),
-                MF = as.list(GOCCOFFSPRING))
+                MF = as.list(GOMFOFFSPRING))
   
   offspringGOTerms = temp[[which(names(temp) == go_acc)]]
   allENSG = sapply(offspringGOTerms, getGenesForGOTerm)
