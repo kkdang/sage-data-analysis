@@ -31,6 +31,7 @@ Make final dataset, with bad samples excluded.
 ```{r}
 #colnames(metadata)
 metadata_freeze = metadata[-which(metadata$DLPFC_RNA_report..Exclude. == 1),]
+total_samples = nrow(metadata_freeze)
 table(metadata_freeze$DLPFC_RNA_report..Exclude.)
 metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID = factor(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
 
@@ -97,7 +98,7 @@ colnames(lmResults) = rep(c("estimate", "pval"), 3)
 j = 1
 for (i in 2:4) {
   print(paste('Results for minimum count = ', i, sep = ''))
-  biotypeCountsPerSampleFilter = apply(geneCounts_freeze[,1:620], 2, countDetectedByBiotype, biotypes = geneCounts_freeze$biotype, filter=i)
+  biotypeCountsPerSampleFilter = apply(geneCounts_freeze[,1:total_samples], 2, countDetectedByBiotype, biotypes = geneCounts_freeze$biotype, filter=i)
   detectedTotal = totalBiotypeCounts[which(names(totalBiotypeCounts) %in% rownames(biotypeCountsPerSampleFilter))]
   normBiotypeCounts = apply(biotypeCountsPerSampleFilter, MARGIN=2, function(x) x/detectedTotal)
   corrResults[1:length(detectedTotal),j:(j+1)] = plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts)
@@ -129,7 +130,7 @@ Looking at control samples only.
 ```{r echo=c(2:6), fig.height=6, fig.width=6}
 library('edgeR')
 table(metadata_freeze$Dx)
-data.dge = DGEList(counts=geneCounts_freeze[,1:620],group=factor(metadata_freeze$Dx), remove.zeros=TRUE)
+data.dge = DGEList(counts=geneCounts_freeze[,1:total_samples],group=factor(metadata_freeze$Dx), remove.zeros=TRUE)
 data.dge = calcNormFactors(data.dge)
 control.dge = data.dge[,which(data.dge$samples$group == "Control")]
 control_gene_means = rowMeans(rpkm(control.dge, gene.length=gene_lengths$length[match(rownames(getCounts(control.dge)), gene_lengths$ensembl_gene_id)], log=TRUE,normalized.lib.sizes=TRUE))
@@ -254,8 +255,8 @@ Detection by length -- as we add seq depth, are we detecting more longer or shor
 ```{r fig.height=4, fig.width=4}
 llincRNAs = which(linc_lengths[,2] > 1e5)
 slincRNAs = which(linc_lengths[,2] <= 1e5)
-llincRNA_detect = apply(lincRNA_geneCounts[llincRNAs,1:620], MARGIN=2, FUN=countDetected)
-slincRNA_detect = apply(lincRNA_geneCounts[slincRNAs,1:620], MARGIN=2, FUN=countDetected)
+llincRNA_detect = apply(lincRNA_geneCounts[llincRNAs,1:total_samples], MARGIN=2, FUN=countDetected)
+slincRNA_detect = apply(lincRNA_geneCounts[slincRNAs,1:total_samples], MARGIN=2, FUN=countDetected)
 hist(llincRNA_detect)
 hist(slincRNA_detect)
 ```
@@ -263,7 +264,7 @@ hist(slincRNA_detect)
 Note this includes all samples, not just control samples.
 
 ```{r}
-plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect[1:620]/length(llincRNAs), main = paste("detection of long lincRNAs", "\nn=", length(llincRNAs), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected out of total for this dataset", ylim = range(0,1))
+plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect[1:total_samples]/length(llincRNAs), main = paste("detection of long lincRNAs", "\nn=", length(llincRNAs), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected out of total for this dataset", ylim = range(0,1))
 lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect/length(llincRNAs)), col = "blue", lwd = 2)    
 summary(lm(llincRNA_detect/length(llincRNAs) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)))
 
