@@ -11,7 +11,7 @@ metadata = read.csv(getFileLocation(metaFile))
 
 ```{r warning=FALSE}
 setwd('~/Computing/commonmind/analysis/discord/')
-source('~/Computing/rnaseq_analysis_functions.R')
+source('~/Computing/sage-data-analysis/rnaseq_analysis_functions.R')
 ```
 
 Make final dataset, with bad samples excluded. 
@@ -35,8 +35,8 @@ completeData = convertMatrix(data)
 completeDenom = getDenomMatrix(data)
 # save(completeData, file="completeData.bzip2",compress="bzip2")
 # save(completeDenom, file="completeDenom.bzip2", compress="bzip2")
- load("completeData.bzip2")
- load("completeDenom.bzip2")
+# load("completeData.bzip2")
+# load("completeDenom.bzip2")
 ```
 
 Check whether any samples are missing from the discordance file, and that sample IDs match. Sample MSSM\_RNA\_BP\_PFC\_16 is missing from the file -- it did not have a VCF on minerva at time of discord file creation.
@@ -47,7 +47,7 @@ dim(completeData)
 ```
 
 Get vector of DNA-RNA self-concordance values.
-```{r echo=FALSE}
+```{r echo=1}
 getDiagVecDNARNA=function(inMatrix){
   x = min(grep(pattern="_RNA_",x=colnames(inMatrix))) # find first RNAseq sample
   end = ncol(inMatrix)
@@ -68,18 +68,22 @@ getDiagVecDNARNA=function(inMatrix){
   print(dim(final))
   return(diag(final))
 }
+selfDiscord = getDiagVecDNARNA(completeData)
+hist(selfDiscord)
 ```
 
 
+
 Compare vcf-tools concordance to varianttools to make sure they are the same or different by an amount for which I can correct.
-```{r}
-filteredCalls = read.delim("../../data/vcf_stats_flt.summary", header=FALSE)
+```{r echo=FALSE}
+filteredCalls = read.delim("~/Computing/commonmind/data/vcf_stats_flt.summary", header=FALSE)
 colnames(filteredCalls) = c("filename", "intersect", "chip_only", "seq_only", "non-ref_discord")
 hist(0.01*filteredCalls[,5], xlim = range(0,0.5), breaks = 40, xlab = "fraction discordant", main = "Discordance on filtered VCFs")
 
 # fix filenames
 x = seq(from=1, to=nrow(filteredCalls)*2,by=2)
 filteredCalls$filename = unlist(strsplit(as.character(filteredCalls[,1]),split="\\."))[x]
+rm(x)
 
 # add DNA sample IDs
 filteredCalls$DNA_id = metadata_freeze$DNA_report..Genotyping.Sample_ID[match(filteredCalls$filename, metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)]
@@ -88,54 +92,72 @@ filteredCalls$vtools_discord = selfDiscord[match(filteredCalls$DNA_id, names(sel
 hist(filteredCalls$"non-ref_discord" - (filteredCalls$vtools_discord*100), breaks = 40)
 z = abs(filteredCalls$"non-ref_discord" - (filteredCalls$vtools_discord*100))
 length(which( z > 1))
+rm(z)
 ```
 Looks like they are similar enough that correction is not needed.
 
 
 Plot concordance vs depth and compare mean concordance and slope in filtered vs unfiltered datasets.
 -----------------------------------------
+Filtered calls using default filtering in samtools.
 ```{r}
-selfDiscord = getDiagVecDNARNA(completeData)
-hist(selfDiscord)
+hist(selfDiscord, breaks = 20)
 
-# temporary code to remove the samples not properly switched in metadata file
-bad_switch = which(selfDiscord > 0.5)
-selfDiscord_reduced = selfDiscord[-bad_switch]
-hist(selfDiscord_reduced, breaks = 20)
-
-seqDepth = metadata_freeze$DLPFC_RNA_report..Mapped.Reads[match(names(selfDiscord_reduced), metadata_freeze$DNA_report..Genotyping.Sample_ID)]
-names(seqDepth) = metadata_freeze$DNA_report..Genotyping.Sample_ID[match(names(selfDiscord_reduced), metadata_freeze$DNA_report..Genotyping.Sample_ID)]
-plot(log10(seqDepth), 1-selfDiscord_reduced, ylab = "concordance", xlab = "log10(mapped reads)", main = "DNA-RNA variant concordance vs depth")
-lines(lowess(log10(seqDepth), 1-selfDiscord_reduced), col = "blue", lwd = 2)    
-summary(lm(1-selfDiscord_reduced ~ log10(seqDepth)))
-cor.test(log10(seqDepth), 1-selfDiscord_reduced)
+seqDepth = metadata_freeze$DLPFC_RNA_report..Mapped.Reads[match(names(selfDiscord), metadata_freeze$DNA_report..Genotyping.Sample_ID)]
+names(seqDepth) = metadata_freeze$DNA_report..Genotyping.Sample_ID[match(names(selfDiscord), metadata_freeze$DNA_report..Genotyping.Sample_ID)]
+plot(log10(seqDepth), 1-selfDiscord, ylab = "concordance", xlab = "log10(mapped reads)", main = "DNA-RNA variant concordance vs depth")
+lines(lowess(log10(seqDepth), 1-selfDiscord), col = "blue", lwd = 2)    
+summary(lm(1-selfDiscord ~ log10(seqDepth)))
 ```
 
 How does the concordance of unfiltered BCFs (variant position only) compare with chip?
 ```{r}
-unfilteredCalls = read.delim("../../data/vcf_stats.summary", header=FALSE)
-colnames(unfilteredCalls) = c("filename", "intersect", "chip_only", "seq_only", "non-ref_discord")
-hist(0.01*unfilteredCalls[,5], xlim = range(0,0.5), breaks = 40, xlab = "fraction discordant", main = "Discordance on unfiltered BCFs")
+unfilteredCalls = read.delim("~/Computing/commonmind/data/vcf_stats_raw.summary", header=FALSE)
+colnames(unfilteredCalls) = c("filename", "intersect", "chip_only", "seq_only", "non_ref_discord")
+hist(0.01*unfilteredCalls$non_ref_discord, xlim = range(0,0.5), breaks = 40, xlab = "fraction discordant", main = "Discordance on unfiltered BCFs")
 
 # fix filenames
 x = seq(from=1, to=nrow(unfilteredCalls)*2,by=2)
 unfilteredCalls$filename = unlist(strsplit(as.character(unfilteredCalls[,1]),split="\\."))[x]
+rm(x)
 
-# lots of contortions to get comparable datasets with matching names
-seqDepth2 = metadata_freeze$DLPFC_RNA_report..Mapped.Reads[match(unfilteredCalls$filename, metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)]
-names(seqDepth2) = metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID[match(unfilteredCalls$filename, metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)]
-seqDepth2 = seqDepth2[-which(is.na(seqDepth2))]
-length(intersect(unfilteredCalls$filename, names(seqDepth2)))
-unfilteredCalls_good = unfilteredCalls[which(unfilteredCalls$filename %in% names(seqDepth2)),]
-unfilteredCalls_good = unfilteredCalls_good[match(names(seqDepth2), unfilteredCalls_good$filename),]
-z = which(is.na(unfilteredCalls_good[,5]))
-unfilteredCalls_good = unfilteredCalls_good[-z,]
-seqDepth2 = seqDepth2[-z]
+# remove samples that don't match up between metadata and unfiltered calls
+which(duplicated(unfilteredCalls$filename))
+unfilteredCalls$DNA_id = metadata$DNA_report..Genotyping.Sample_ID[match(unfilteredCalls$filename, metadata$DLPFC_RNA_isolation..Sample.RNA.ID)]
+unfilteredCalls$filename[which(is.na(unfilteredCalls$DNA_id))]
+unfilteredCalls_good = unfilteredCalls[-which(is.na(unfilteredCalls$DNA_id)),]
+as.character(unfilteredCalls_good$DNA_id[which(duplicated(unfilteredCalls_good$DNA_id))])
+unfilteredCalls_good = unfilteredCalls_good[-which(duplicated(unfilteredCalls_good$DNA_id)),]
+toRemove = setdiff(as.character(unfilteredCalls_good$DNA_id), names(seqDepth))
+unfilteredCalls_final = unfilteredCalls_good[-which(unfilteredCalls_good$DNA_id %in% toRemove),]
+setdiff(names(seqDepth), as.character(unfilteredCalls_final$DNA_id))
+setdiff(unfilteredCalls_final$DNA_id, names(seqDepth))
 
-plot(log10(seqDepth2), (0.01*(100-unfilteredCalls_good[,5])), ylab = "concordance", xlab = "log10(mapped reads)", main = "DNA-RNA variant concordance vs depth")
-lines(lowess(log10(seqDepth2), (0.01*(100-unfilteredCalls_good[,5]))), col = "blue", lwd = 2)    
+# order the data
+unfilteredCalls_final = unfilteredCalls_final[order(match(as.character(unfilteredCalls_final$DNA_id), names(seqDepth))),]
+head(unfilteredCalls_final$DNA_id)
+head(names(seqDepth))
+tail(unfilteredCalls_final$DNA_id)
+tail(names(seqDepth))
 
-summary(lm(0.01*(100-unfilteredCalls_good[,5]) ~ log10(seqDepth2)))
+# plot, using regression line not lowess
+plot(log10(seqDepth), 1-(0.01*unfilteredCalls_final$non_ref_discord), ylab = "concordance", xlab = "log10(mapped reads)", main = "DNA-RNA variant concordance vs depth", ylim = range(0.5,1))
+lm_results = summary(lm(1-(0.01*unfilteredCalls_final$non_ref_discord) ~ log10(seqDepth)))
+abline(a=lm_results$coefficients[1,1], b = lm_results$coefficients[2,1], col = "green", lwd = 2)
+
+# joint plot using regression lines
+plot(log10(seqDepth), 1-(0.01*unfilteredCalls_final$non_ref_discord), ylab = "concordance", xlab = "log10(mapped reads)", main = "DNA-RNA variant concordance vs depth", ylim = range(0.5,1), col = "yellowgreen")
+abline(a=lm_results$coefficients[1,1], b = lm_results$coefficients[2,1], col = "orangered", lwd = 2)
+
+points(log10(seqDepth), 1-selfDiscord, col = "lightskyblue")
+lm_results = summary(lm(1-selfDiscord ~ log10(seqDepth)))
+abline(a=lm_results$coefficients[1,1], b = lm_results$coefficients[2,1], col = "orangered", lwd = 2)
+legend("bottomleft", legend = c("filtered", "raw"), col = c("lightskyblue", "yellowgreen"), pch = 16)
+
+
+# print median concordance for each
+median(1-(0.01*unfilteredCalls_final$non_ref_discord), na.rm = TRUE)
+median(1-selfDiscord, na.rm = TRUE)
 ```
 
 
@@ -148,39 +170,58 @@ Filtered VCF calls.
 selfCommonSites = getDiagVecDNARNA(completeDenom)
 hist(selfCommonSites)
 
-# temporary code to remove the samples not properly switched in metadata file
-selfCommonSites_reduced = selfCommonSites[-bad_switch]
-hist(selfCommonSites_reduced, breaks = 20)
+plot(log10(seqDepth), selfCommonSites, ylab = "number of sites", xlab = "log10(mapped reads)", main = "DNA-RNA common sites vs depth")
+lines(lowess(log10(seqDepth), selfCommonSites), col = "blue", lwd = 2)    
+summary(lm(selfCommonSites ~ log10(seqDepth)))
+```
 
-plot(log10(seqDepth), selfCommonSites_reduced, ylab = "number of sites", xlab = "log10(mapped reads)", main = "DNA-RNA common sites vs depth")
-lines(lowess(log10(seqDepth), selfCommonSites_reduced), col = "blue", lwd = 2)    
-summary(lm(selfCommonSites_reduced ~ log10(seqDepth)))
-cor.test(log10(seqDepth), selfCommonSites_reduced)
+Compare with unfiltered calls.
+```{r}
+# plot, using regression line not lowess
+plot(log10(seqDepth), unfilteredCalls_final$intersect, ylab = "number of sites", xlab = "log10(mapped reads)", main = "DNA-RNA common sites vs depth")
+lm_results = summary(lm(unfilteredCalls_final$intersect ~ log10(seqDepth)))
+abline(a=lm_results$coefficients[1,1], b = lm_results$coefficients[2,1], col = "green", lwd = 2)
+
+# joint plot using regression lines
+plot(log10(seqDepth), unfilteredCalls_final$intersect, ylab = "number of sites", xlab = "log10(mapped reads)", main = "DNA-RNA common sites vs depth", ylim = range(400,1700), col = "yellowgreen")
+abline(a=lm_results$coefficients[1,1], b = lm_results$coefficients[2,1], col = "orangered", lwd = 2)
+
+points(log10(seqDepth), selfCommonSites, col = "lightskyblue")
+lm_results = summary(lm(selfCommonSites ~ log10(seqDepth)))
+abline(a=lm_results$coefficients[1,1], b = lm_results$coefficients[2,1], col = "orangered", lwd = 2)
+legend("bottomleft", legend = c("filtered", "raw"), col = c("lightskyblue", "yellowgreen"), pch = 16)
+
+
+# print median concordance for each
+median(unfilteredCalls_final$intersect, na.rm = TRUE)
+median(selfCommonSites, na.rm = TRUE)
 ```
 
 
 What fraction of chip-based variant calls are not found by RNAseq? (presumably due to lack of coverage). Compares total non-ref calls in chip VCF with number of common sites found by filtered RNAseq VCFs.
 ```{r}
-totalCalls = read.delim("../../data/chip_variant_counts.out", header=FALSE)
+totalCalls = read.delim("~/Computing/commonmind/data/chip_variant_counts.out", header=FALSE)
 hist(totalCalls[,2])
 length(intersect(totalCalls[,1], names(selfCommonSites)))
 
-totalCalls_good = totalCalls[which(totalCalls[,1] %in% names(selfCommonSites_reduced)),]
+totalCalls_good = totalCalls[which(totalCalls[,1] %in% names(selfCommonSites)),]
 totalCalls_good = totalCalls_good[match(names(seqDepth), totalCalls_good[,1]),]
 
-#plot(log10(seqDepth), totalCalls_good[,2]-selfCommonSites_reduced), ylab = "number variant positions", xlab = "log10(mapped reads)", main = "Chip variants not called by RNAseq")
-plot(log10(seqDepth), (totalCalls_good[,2]-selfCommonSites_reduced)/totalCalls_good[,2], ylab = "fraction variant positions", xlab = "log10(mapped reads)", main = "Chip variants not called by RNAseq\nn ~ 2500")
-lines(lowess(log10(seqDepth), (totalCalls_good[,2]-selfCommonSites_reduced)/totalCalls_good[,2]), col = "blue", lwd = 2)    
-summary(lm((totalCalls_good[,2]-selfCommonSites_reduced)/totalCalls_good[,2] ~ log10(seqDepth)))
+#plot(log10(seqDepth), totalCalls_good[,2]-selfCommonSites), ylab = "number variant positions", xlab = "log10(mapped reads)", main = "Chip variants not called by RNAseq")
+plot(log10(seqDepth), (totalCalls_good[,2]-selfCommonSites)/totalCalls_good[,2], ylab = "fraction variant positions", xlab = "log10(mapped reads)", main = "Chip variants not called by RNAseq\nn ~ 2500")
+lines(lowess(log10(seqDepth), (totalCalls_good[,2]-selfCommonSites)/totalCalls_good[,2]), col = "blue", lwd = 2)    
+summary(lm((totalCalls_good[,2]-selfCommonSites)/totalCalls_good[,2] ~ log10(seqDepth)))
 ```
 
 
 What fraction of chip-based variant calls are not found by unfiltered RNAseq? (presumably due to lack of coverage). Compares total non-ref calls in chip VCF with number of common sites found by unfiltered RNAseq BCFs.
 ```{r}
-hist(unfilteredCalls_good$intersect)
-plot(log10(seqDepth2), (unfilteredCalls_good$chip_only-unfilteredCalls_good$intersect)/unfilteredCalls_good$chip_only, ylab = "fraction variant positions", xlab = "log10(mapped reads)", main = "Chip variants not called by RNAseq\nn ~ 2500")
-lines(lowess(log10(seqDepth2), (unfilteredCalls_good$chip_only-unfilteredCalls_good$intersect)/unfilteredCalls_good$chip_only), col = "blue", lwd = 2)    
-summary(lm((totalCalls_good[,2]-selfCommonSites_reduced)/totalCalls_good[,2] ~ log10(seqDepth)))
+hist(unfilteredCalls_final$intersect)
+x = which(is.na(unfilteredCalls_final$intersect))
+unfilteredCalls_final = unfilteredCalls_final[-x,]
+seqDepth = seqDepth[-x]
+plot(log10(seqDepth), (unfilteredCalls_final$chip_only-unfilteredCalls_final$intersect)/unfilteredCalls_final$chip_only, ylab = "fraction variant positions", xlab = "log10(mapped reads)", main = "Chip variants not called by RNAseq\nn ~ 2500")
+lines(lowess(log10(seqDepth), (unfilteredCalls_final$chip_only-unfilteredCalls_final$intersect)/unfilteredCalls_final$chip_only), col = "blue", lwd = 2)    
 ```
 
 
