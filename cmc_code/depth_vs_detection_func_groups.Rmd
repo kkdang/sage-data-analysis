@@ -20,7 +20,6 @@ source('~/Computing/sage-data-analysis/rnaseq_analysis_functions.R')
 ```
 
 Make final dataset, with bad samples excluded. 
-
 ```{r}
 #colnames(metadata)
 metadata_freeze = metadata[-which(metadata$DLPFC_RNA_report..Exclude. == 1),]
@@ -39,15 +38,14 @@ tail(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
 ```
 
 
-1-Make list of functional categories
+1-Make list of functional categories. I obtained the list from biomart, by asking for all ENSG that have a GO ID.
 ```{r}
-# This list is obtained from biomart, by asking for all ENSG that have a GO ID.
 ENSG_GO = read.delim("../../ENSG_GO_mart_export.txt", header = TRUE)
 all_GO = unique(ENSG_GO$GO.Term.Accession)
 
 ```
 
-2-Run lm on each category
+2-Run regression on each category.
 ```{r cache=TRUE}
 goBetas = matrix(NA, nrow=length(all_GO),ncol=3)
 rownames(goBetas) = all_GO
@@ -65,23 +63,21 @@ for (i in 1:length(all_GO)) {
 }
 ```
 
-3-compare beta estimates
+3-Compare beta estimates for slope, which is the detection/depth relationship.
 ```{r}
 xx = as.list(GOTERM)
 
 hist(goBetas[,1], col = "papayawhip", main = "Detection vs depth\nGO categories", xlab = "regression slope estimate")
 plot(goBetas[,2],goBetas[,1], main = "Slope vs Intercept", xlab = "Intercept", ylab = "Slope")
 plot(log10(goBetas[,3]),goBetas[,1], main = "Slope vs number of genes", xlab = "number of genes", ylab = "Slope")
-
-
-goBetas_reduced = goBetas[-which(goBetas[,3] < 6),]
-plot(goBetas_reduced[,2],goBetas_reduced[,1], main = "Slope vs Intercept", xlab = "Intercept", ylab = "Slope")
-plot(log10(goBetas_reduced[,3]),goBetas_reduced[,1], main = "Slope vs number of genes", xlab = "log10(number of genes)", ylab = "Slope")
-abline(a=0.47,b=-0.16, col = "green", lwd = 2)
 ```
 
-4-Choose some categories that have highest rate of detection increase with depth, but take into account the number of genes affiliated with each GO group. Essentially, I just drew a line on the graph and look at things that are above the line.
+4-Choose some categories that have highest rate of detection increase with depth, but take into account the number of genes affiliated with each GO group. Essentially, I just drew a line on the graph and looked at things that are above the line.
 ```{r}
+goBetas_reduced = goBetas[-which(goBetas[,3] < 6),]
+plot(log10(goBetas_reduced[,3]),goBetas_reduced[,1], main = "Slope vs number of genes", xlab = "log10(number of genes)", ylab = "Slope")
+abline(a=0.47,b=-0.16, col = "green", lwd = 2)
+
 range(goBetas_reduced[,3])
 goBetas_expected = 0.47-(0.16*log10(as.numeric(goBetas_reduced[,3])))
 goBetas_extreme = which(goBetas_reduced[,1] > goBetas_expected)
