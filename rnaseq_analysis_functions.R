@@ -96,4 +96,10 @@ regressDetectionOnMetadata=function(inDetectCounts, inMetaData){
   return(lmStats)
 }
 
-countDetected=function(x, filter=2){ length(which(x > filter)) }
+countDetected=function(x, filter=2){ sum(x > filter) }
+
+addDetected=function(counts,filter=2){
+  detected = apply(counts,MARGIN=1,function(x) {sum(x > filter)})
+  counts$detected = detected
+  return(counts)
+}
