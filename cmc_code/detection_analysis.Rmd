@@ -17,7 +17,8 @@ metadata = read.csv(getFileLocation(metaFile))
 
 ```{r warning=FALSE}
 setwd('~/Computing/commonmind/analysis')
-source('~/Computing/rnaseq_analysis_functions.R')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 ```
 
 Which samples are repeated in the input file?
@@ -111,7 +112,7 @@ for (i in 2:4) {
 print(corrResults)
 ```
 
-Regression analysis of relatinoship between detection and depth per biotype.
+Regression analysis of relationship between detection and depth per biotype.
 ```{r}
 # sets of two columns: first is beta estimate for slope, second is p-value
 print(lmResults)
