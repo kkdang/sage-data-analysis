@@ -16,7 +16,7 @@ metadata = read.csv(getFileLocation(metaFile))
 
 ```{r warning=FALSE}
 setwd('~/Computing/commonmind/analysis/')
-source('~/Computing/rnaseq_analysis_functions.R')
+source('~/Computing/sage-data-analysis/rnaseq_analysis_functions.R')
 ```
 
 Make final dataset, with bad samples excluded. 
@@ -75,81 +75,185 @@ Function profile plots using GO
 ---------------------------------------
 
 GO "Cellular Component" ontology, level 2
-```{r}
-brain.cc.profiles = basicProfile(genelist=detected_control,onto="CC",level=2,orgPackage="org.Hs.eg.db")
-print(brain.cc.profiles, percentage=TRUE)
-plotProfiles(brain.cc.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
-
-brain.cc.profiles.d4 = basicProfile(genelist=detected4_control,onto="CC",level=2,orgPackage="org.Hs.eg.db")
-brain.cc.d2d4 = mergeProfilesLists(brain.cc.profiles, brain.cc.profiles.d4, profNames = c("min.2", "min.4"))
-plotProfiles(brain.cc.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend = TRUE)
+```{r,cache=TRUE}
+brain.cc.profiles = basicProfile(genelist=detected_control,onto="CC",level=2,orgPackage="org.Hs.eg.db", empty.cats=F)
+plotProfiles(brain.cc.profiles, "Functional profiles control samps",percentage = F, multiplePlots = F)
 ```
 
 GO "Cellular Component" ontology, level 3
-```{r, fig.height=8, fig.width=8}
+```{r, fig.height=8, fig.width=8,cache=TRUE}
 brain.cc3.profiles = basicProfile(genelist=detected_control,onto="CC",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
 #print(brain.cc3.profiles, percentage=TRUE)
 brain.cc3.profiles.d4 = basicProfile(genelist=detected4_control,onto="CC",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
 brain.cc3.d2d4 = mergeProfilesLists(brain.cc3.profiles, brain.cc3.profiles.d4, profNames = c("min.2", "min.4"))
-plotProfiles(brain.cc3.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend=TRUE)
+plotProfiles(brain.cc3.d2d4, "Functional profiles control samps",percentage = F, multiplePlots = F, legend=TRUE)
 ```
 
 GO "Cellular Component" ontology, level 4
-```{r, fig.height=9, fig.width=9}
+```{r, fig.height=9, fig.width=9,cache=TRUE}
 brain.cc4.profiles = basicProfile(genelist=detected_control,onto="CC",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.cc4.profiles,file="brain_cc4_profiles.bz2",compress="bzip2")
+#load("brain_cc4_profiles.bz2")
 #print(brain.cc4.profiles, percentage=TRUE)
-par(cex=0.6)
-plotProfiles(brain.cc4.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
-par(cex=1)
+#hist(brain.cc4.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.cc4.profiles[[1]]$Frequency < 100)
+brain.cc4.profiles.reduced = brain.cc4.profiles
+brain.cc4.profiles.reduced[[1]] = brain.cc4.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.cc4.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
 ```
 
+GO "Cellular Component" ontology, level 5
+```{r, fig.height=9, fig.width=9,cache=TRUE}
+brain.cc5.profiles = basicProfile(genelist=detected_control,onto="CC",level=5,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.cc5.profiles,file="brain_cc5_profiles.bz2",compress="bzip2")
+#load("brain_cc5_profiles.bz2")
+#print(brain.cc5.profiles, percentage=TRUE)
+hist(brain.cc5.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.cc5.profiles[[1]]$Frequency < 100)
+brain.cc5.profiles.reduced = brain.cc5.profiles
+brain.cc5.profiles.reduced[[1]] = brain.cc5.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.cc5.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
+```
+
+GO "Cellular Component" ontology, level 6
+```{r, fig.height=9, fig.width=9,cache=TRUE}
+brain.cc6.profiles = basicProfile(genelist=detected_control,onto="CC",level=6,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.cc6.profiles,file="brain_cc6_profiles.bz2",compress="bzip2")
+#load("brain_cc6_profiles.bz2")
+#print(brain.cc6.profiles, percentage=TRUE)
+hist(brain.cc6.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.cc6.profiles[[1]]$Frequency < 150)
+brain.cc6.profiles.reduced = brain.cc6.profiles
+brain.cc6.profiles.reduced[[1]] = brain.cc6.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.cc6.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
+```
+
+
 GO "Biological Process" ontology, level 2
-```{r}
-brain.bp.profiles = basicProfile(genelist=detected_control,onto="BP",level=2,orgPackage="org.Hs.eg.db")
-print(brain.bp.profiles, percentage=TRUE)
-plotProfiles(brain.bp.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+```{r,cache=TRUE}
+brain.bp.profiles = basicProfile(genelist=detected_control,onto="BP",level=2,orgPackage="org.Hs.eg.db",empty.cats=F)
+plotProfiles(brain.bp.profiles, "Functional profiles\ncontrol samples",percentage = F, multiplePlots = F)
 ```
 
 GO "Biological Process" ontology, level 3
-```{r fig.height=9, fig.width=9}
+```{r fig.height=12, fig.width=7,cache=TRUE}
 brain.bp3.profiles = basicProfile(genelist=detected_control,onto="BP",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.bp3.profiles,file="brain_bp3_profiles.bz2",compress="bzip2")
+#load("brain_bp3_profiles.bz2")
 #print(brain.bp3.profiles, percentage=TRUE)
-par(cex=0.7)
-plotProfiles(brain.bp3.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
-par(cex=1)
+z = which(brain.bp3.profiles[[1]]$Frequency < 500)
+brain.bp3.profiles.reduced = brain.bp3.profiles
+brain.bp3.profiles.reduced[[1]] = brain.bp3.profiles.reduced[[1]][-z,]
+rm(z)
+#print(brain.bp3.profiles.reduced)
+plotProfiles(brain.bp3.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F, labelWidth=30)
 ```
 
 GO "Biological Process" ontology, level 4
-```{r}
+```{r,cache=TRUE}
 brain.bp4.profiles = basicProfile(genelist=detected_control,onto="BP",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.bp4.profiles,file="brain_bp4_profiles.bz2",compress="bzip2")
+#load("brain_bp4_profiles.bz2")
 #print(brain.bp4.profiles, percentage=TRUE)
-#plotProfiles(brain.bp4.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+#hist(brain.bp4.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.bp4.profiles[[1]]$Frequency < 700)
+brain.bp4.profiles.reduced = brain.bp4.profiles
+brain.bp4.profiles.reduced[[1]] = brain.bp4.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.bp4.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
 ```
 
+GO "Biological Process" ontology, level 5
+```{r,cache=TRUE}
+brain.bp5.profiles = basicProfile(genelist=detected_control,onto="BP",level=5,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.bp5.profiles,file="brain_bp5_profiles.bz2",compress="bzip2")
+#load("brain_bp5_profiles.bz2")
+#print(brain.bp5.profiles, percentage=TRUE)
+hist(brain.bp5.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.bp5.profiles[[1]]$Frequency < 550)
+brain.bp5.profiles.reduced = brain.bp5.profiles
+brain.bp5.profiles.reduced[[1]] = brain.bp5.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.bp5.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
+```
+
+
+GO "Biological Process" ontology, level 6
+```{r,cache=TRUE}
+brain.bp6.profiles = basicProfile(genelist=detected_control,onto="BP",level=6,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.bp6.profiles,file="brain_bp6_profiles.bz2",compress="bzip2")
+#load("brain_bp6_profiles.bz2")
+#print(brain.bp6.profiles, percentage=TRUE)
+hist(brain.bp6.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.bp6.profiles[[1]]$Frequency < 500)
+brain.bp6.profiles.reduced = brain.bp6.profiles
+brain.bp6.profiles.reduced[[1]] = brain.bp6.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.bp6.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
+```
+
+
+
 GO "Molecular Function" ontology, level 2
-```{r}
+```{r,cache=TRUE}
 brain.mf.profiles = basicProfile(genelist=detected_control,onto="MF",level=2,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
-print(brain.mf.profiles, percentage=TRUE)
-plotProfiles(brain.mf.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
-brain.mf.profiles.d4 = basicProfile(genelist=detected4_control,onto="MF",level=2,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
-brain.mf.d2d4 = mergeProfilesLists(brain.mf.profiles, brain.mf.profiles.d4, profNames = c("min.2", "min.4"))
-plotProfiles(brain.mf.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend=TRUE)
+plotProfiles(brain.mf.profiles, "Functional profiles control samps",percentage = F, multiplePlots = F)
+# brain.mf.profiles.d4 = basicProfile(genelist=detected4_control,onto="MF",level=2,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+# brain.mf.d2d4 = mergeProfilesLists(brain.mf.profiles, brain.mf.profiles.d4, profNames = c("min.2", "min.4"))
+# plotProfiles(brain.mf.d2d4, "Functional profiles control samps",percentage = F, multiplePlots = F, legend=TRUE)
 ```
 
 GO "Molecular Function" ontology, level 3
-```{r, fig.height=8, fig.width=8}
+```{r, fig.height=8, fig.width=8,cache=TRUE}
 brain.mf3.profiles = basicProfile(genelist=detected_control,onto="MF",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
 #print(brain.mf3.profiles, percentage=TRUE)
-plotProfiles(brain.mf3.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
-brain.mf3.profiles.d4 = basicProfile(genelist=detected4_control,onto="MF",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
-brain.mf3.d2d4 = mergeProfilesLists(brain.mf3.profiles, brain.mf3.profiles.d4, profNames = c("min.2", "min.4"))
-plotProfiles(brain.mf3.d2d4, "Functional profiles control samps",percentage = T, multiplePlots = F, legend=TRUE)
+plotProfiles(brain.mf3.profiles, "Functional profiles control samps",percentage = F, multiplePlots = F)
+# brain.mf3.profiles.d4 = basicProfile(genelist=detected4_control,onto="MF",level=3,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+# brain.mf3.d2d4 = mergeProfilesLists(brain.mf3.profiles, brain.mf3.profiles.d4, profNames = c("min.2", "min.4"))
+# plotProfiles(brain.mf3.d2d4, "Functional profiles control samps",percentage = F, multiplePlots = F, legend=TRUE)
 ```
 
 GO "Molecular Function" ontology, level 4
-```{r, fig.height=10, fig.width=10}
+```{r, fig.height=10, fig.width=10,cache=TRUE}
 brain.mf4.profiles = basicProfile(genelist=detected_control,onto="MF",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.mf4.profiles,file="brain_mf4_profiles.bz2",compress="bzip2")
+#load("brain_mf4_profiles.bz2")
 #print(brain.mf4.profiles, percentage=TRUE)
-par(cex=0.8)
-plotProfiles(brain.mf4.profiles, "Functional profiles control samps",percentage = T, multiplePlots = F)
+#hist(brain.mf4.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.mf4.profiles[[1]]$Frequency < 100)
+brain.mf4.profiles.reduced = brain.mf4.profiles
+brain.mf4.profiles.reduced[[1]] = brain.mf4.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.mf4.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
+```
+
+GO "Molecular Function" ontology, level 5
+```{r, fig.height=10, fig.width=10,cache=TRUE}
+brain.mf5.profiles = basicProfile(genelist=detected_control,onto="MF",level=5,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.mf5.profiles,file="brain_mf5_profiles.bz2",compress="bzip2")
+#load("brain_mf5_profiles.bz2")
+#print(brain.mf5.profiles, percentage=TRUE)
+hist(brain.mf5.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.mf5.profiles[[1]]$Frequency < 100)
+brain.mf5.profiles.reduced = brain.mf5.profiles
+brain.mf5.profiles.reduced[[1]] = brain.mf5.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.mf5.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
+```
+
+GO "Molecular Function" ontology, level 6
+```{r, fig.height=10, fig.width=10,cache=TRUE}
+brain.mf6.profiles = basicProfile(genelist=detected_control,onto="MF",level=6,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+#save(brain.mf6.profiles,file="brain_mf6_profiles.bz2",compress="bzip2")
+#load("brain_mf6_profiles.bz2")
+#print(brain.mf6.profiles, percentage=TRUE)
+hist(brain.mf6.profiles[[1]]$Frequency, breaks = 20)
+z = which(brain.mf6.profiles[[1]]$Frequency < 50)
+brain.mf6.profiles.reduced = brain.mf6.profiles
+brain.mf6.profiles.reduced[[1]] = brain.mf6.profiles.reduced[[1]][-z,]
+rm(z)
+plotProfiles(brain.mf6.profiles.reduced, "Major functional profiles\ncontrol samples",percentage = F, multiplePlots = F,labelWidth=30)
 ```
