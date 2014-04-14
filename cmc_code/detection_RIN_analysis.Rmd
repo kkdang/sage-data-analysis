@@ -1,0 +1,207 @@
+Detection analysis on gene counts by RIN
+========================================================
+Kristen K Dang for Sage Bionetworks
+April 3, 2014
+
+Which genes are over/undersampled with low RIN?
+Start with control samples only.
+
+Load synapse and Ensembl gene counts file.
+```{r warning=FALSE}
+setwd('~/Computing/commonmind/analysis')
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+sourceRepoFile(sageCode, "cmc_code/cmc_routines.R")
+```
+
+```{r}
+table(metadata_freeze$Dx)
+geneCounts_control = geneCounts_freeze[,which(metadata_freeze$Dx == "Control")]
+metadata_control = metadata_freeze[which(metadata_freeze$Dx == "Control"),]
+```
+
+
+Plot distribution of RIN
+```{r}
+hist(metadata_control$DLPFC_RNA_isolation..RIN, breaks = 50, col = "peru")
+lowRIN = which(metadata_control$DLPFC_RNA_isolation..RIN < 7)
+length(lowRIN)
+lowRIN_counts = geneCounts_control[,lowRIN]
+highRIN = which(metadata_control$DLPFC_RNA_isolation..RIN > 8)
+length(highRIN)
+highRIN_counts = geneCounts_control[,highRIN]
+```
+
+What genes have largest changes in detection across samples when comparing samples with low RIN to samples with high RIN? Is composition of biotypes changing with RIN? 
+```{r}
+lowRIN_detect = apply(lowRIN_counts,1,countDetected)
+highRIN_detect = apply(highRIN_counts,1,countDetected)
+boxplot(lowRIN_detect/ncol(lowRIN_counts), highRIN_detect/ncol(highRIN_counts),names=c("low RIN", "high RIN"))
+hist(lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts))
+# Genes with largest decrease of detection with higher RIN
+dDetect = rownames(geneCounts_control)[which((lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts)) > 0.5)]
+dDetect_tmp = data.frame(rep(NA, length(dDetect)))
+rownames(dDetect_tmp) = dDetect
+table(addBiotype(dDetect_tmp)$biotype)
+
+# Genes with largest increase of detection with higher RIN
+iDetect = rownames(geneCounts_control)[which((lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts)) < -0.5)]
+iDetect_tmp = data.frame(rep(NA, length(iDetect)))
+rownames(iDetect_tmp) = iDetect
+table(addBiotype(iDetect_tmp)$biotype)
+```
+Looks like higher RIN finds fewer pseudogenes. This suggests reads are aligning erroneously to the pseudogene rather than the gene, presumably due to poor quality libraries.
+
+
+
+
+Which genes have significant association with detection by RIN? Per-gene logistic regression on detection vs RIN+depth. 
+```{r,cache=TRUE,warning=FALSE}
+detectFilter=function(count,filter=2){
+  if (count > filter) { return(1)}
+  else { return(0) }
+}
+runLogistic=function(gCounts){
+  F = sapply(gCounts,FUN=detectFilter, simplify=TRUE)
+  if (sum(F) < length(gCounts)){
+    fit = glm(F~metadata_control$DLPFC_RNA_isolation..RIN+log10(metadata_control$DLPFC_RNA_report..Mapped.Reads),family=binomial())
+    temp = summary(fit)
+    return(c(temp$coefficients[2,4], temp$coefficients[2,1]) )
+  }
+  else{return(c(NA, NA))}
+}
+
+RINeffectByGene = apply(X=geneCounts_control,MARGIN=1,FUN=runLogistic)
+
+hist(RINeffectByGene[1,], col = "lightcyan2")
+hist(RINeffectByGene[1,], col = "lightcyan2", xlim = range(0,0.01), breaks = 800)
+sigGenes = which(RINeffectByGene[1,] < .001)
+length(sigGenes)
+```
+
+
+Alternate version, using all samples but controlling for Dx.
+```{r}
+runLogistic_wDx=function(gCounts){
+  F = sapply(gCounts,FUN=detectFilter, simplify=TRUE)
+  if (sum(F) < length(gCounts)){
+    fit = glm(F~metadata_freeze$DLPFC_RNA_isolation..RIN+log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+metadata_freeze$Dx,family=binomial())
+    temp = summary(fit)
+    return(c(temp$coefficients[2,4], temp$coefficients[2,1]) )
+  }
+  else{return(c(NA, NA))}
+}
+
+apply(X=geneCounts_freeze[2,],MARGIN=1,FUN=runLogistic_wDx)
+RINeffectByGene_wDx = apply(X=geneCounts_freeze,MARGIN=1,FUN=runLogistic_wDx)
+hist(RINeffectByGene_wDx[1,], col = "lightcyan2")
+sigGenes = which(RINeffectByGene_wDx[1,] < .001)
+length(sigGenes)
+```
+
+
+Which genes have a significant increase in detection by RIN?
+```{r}
+hist(RINeffectByGene[2,sigGenes], col = "lightcyan2", xlab = "coefficient estimate for RIN")
+sigGenesIncrease = which((RINeffectByGene[1,] < .001) & (RINeffectByGene[2,] >0))
+iRINsig = data.frame(t(RINeffectByGene[,sigGenesIncrease]))
+rownames(iRINsig) = names(sigGenesIncrease)
+iRINsig_wBiot = addBiotype(iRINsig)
+table(iRINsig_wBiot$biotype)
+#write.table(rownames(iRINsig_wBiot)[which(iRINsig_wBiot$biotype == "protein_coding")], row.names = F, quote = F)
+
+# background detection file for use with CPDB gene over-representation analysis
+geneSums = rowSums(geneCounts_control)
+write.table(names(which(geneSums > 0)),file="detected_control_min1.txt", row.names=F,quote=F,sep='\n',col.names=F)
+```
+
+Which genes have a significant decrease in detection by RIN?
+```{r}
+sigGenesDecrease = which((RINeffectByGene[1,] < .001) & (RINeffectByGene[2,] < 0))
+dRINsig = data.frame(RINeffectByGene[sigGenesDecrease])
+rownames(dRINsig) = names(sigGenesDecrease)
+table(addBiotype(dRINsig)$biotype)
+```
+
+
+Boxplot RIN values vs detection status for a few genes
+```{r}
+temp_data = data.frame(sapply(geneCounts_control[which(rownames(geneCounts_control) == rownames(dRINsig)[1]),],FUN=detectFilter, simplify=TRUE))
+colnames(temp_data) = c('detected')
+temp_data$RIN = metadata_control$DLPFC_RNA_isolation..RIN
+boxplot(temp_data$RIN~temp_data$detected,names=c("not", "detected"), col = "thistle1", ylab = 'RIN', main = 'sample RIN values grouped by\ndetection status for that sample',varwidth=T)
+```
+
+
+Setting up another logistic regression, where expression level of parent gene is taken into account.
+```{r}
+#psiSetFile = synGet('syn2400043')
+dropSuffix=function(ID){
+  unlist(strsplit(as.character(ID),split="[.]"))[1]
+}
+ensgt_matrix = read.delim(file='~/Computing/commonmind/data/ensg-enst-parse.txt',header=FALSE)
+psiFile = synGet('syn2400033')
+psiData  = read.delim(psiFile@filePath,skip=20,header=TRUE)
+psiData_parsedID = sapply(psiData$Pseudogene_id,dropSuffix)
+temp = psiData$Parent_gene[match(ensgt_matrix[,2], psiData_parsedID)]
+ensgt_matrix$parent = sapply(temp,dropSuffix)
+rm(temp)
+```
+
+```{r}
+geneCounts_freeze_temp = geneCounts_freeze
+geneCounts_freeze = addBiotype(geneCounts_freeze_temp)
+rm(geneCounts_freeze_temp)
+
+removeGenes=function(inData,indiciesToRemove){
+  return(inData[-indiciesToRemove,])
+}
+# Test the pseudogenes only against the linear model
+pseudoCounts = geneCounts_freeze[which(geneCounts_freeze$biotype == "pseudogene"),1:618]
+apply(X=pseudoCounts[1,],MARGIN=1,FUN=runLogistic_wDx)
+RINeffectByGene_wDx_pseudo = apply(X=pseudoCounts,MARGIN=1,FUN=runLogistic_wDx)
+hist(RINeffectByGene_wDx_pseudo[1,], col = "lightcyan2")
+
+z = match(rownames(pseudoCounts), ensgt_matrix[,1])
+pseudoCounts_tmp = pseudoCounts[-which(is.na(z)),]
+z = match(rownames(pseudoCounts_tmp), ensgt_matrix[,1])
+#nameFrame = data.frame(rownames(pseudoCounts_tmp))
+pseudoParentIndicies_tmp = match((ensgt_matrix$parent[z]), rownames(geneCounts_freeze)) 
+#nameFrame$parentmatch = rownames(geneCounts_freeze)[pseudoParentIndicies_tmp]
+pseudoCounts_tmp2 = pseudoCounts_tmp[-which(is.na(pseudoParentIndicies_tmp)),]
+z = match(rownames(pseudoCounts_tmp2), ensgt_matrix[,1])
+pseudoParentIndicies = match((ensgt_matrix$parent[z]), rownames(geneCounts_freeze)) 
+pseudoParentCounts = geneCounts_freeze[pseudoParentIndicies,1:618]
+
+# Test the reduced pseudogenes only against the linear model
+RINeffectByGene_wDx_pseudofinal = apply(X=pseudoCounts_final,MARGIN=1,FUN=runLogistic_wDx)
+hist(RINeffectByGene_wDx_pseudofinal[1,], col = "lightcyan2")
+
+
+pseudoBinary = t(apply(pseudoCounts_tmp2[,1:618],MARGIN=1,function(x) sapply(x,FUN=detectFilter,simplify=TRUE)))
+pseudoDetectCount = rowSums(pseudoBinary)
+length(which(pseudoDetectCount > 0))
+pseudoCounts_final = pseudoCounts_tmp2[-which(pseudoDetectCount == 0),]
+pseudoParentCounts_final = as.matrix(pseudoParentCounts[-which(pseudoDetectCount == 0),])
+
+pseudoLmResults = matrix(NA,nrow = nrow(pseudoCounts_final), ncol = 6)
+pseudoLmResults_noParent = matrix(NA,nrow = nrow(pseudoCounts_final), ncol = 6)
+colnames(pseudoLmResults) = c('RIN_est', 'RIN_pv', 'libsize', 'libsize_pv', 'parent', 'parent_pv')
+for (i in 1:nrow(pseudoCounts_final)) { 
+  parentExp = pseudoParentCounts_final[i,]/metadata_freeze$DLPFC_RNA_report..Mapped.Reads
+#  fit = glm(pseudoBinary[i,]~metadata_freeze$DLPFC_RNA_isolation..RIN+log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+parentExp+metadata_freeze$Dx,family=binomial())
+  fit = glm(pseudoBinary[i,]~metadata_freeze$DLPFC_RNA_isolation..RIN+log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+metadata_freeze$Dx,family=binomial())
+  temp = summary(fit)
+  pseudoLmResults[i,] = c(temp$coefficients[2,1], temp$coefficients[2,2], temp$coefficients[3,1], temp$coefficients[3,4], temp$coefficients[4,1], temp$coefficients[4,4]) 
+}
+
+length(which(pseudoLmResults[,2] < 0.01))
+length(which(pseudoLmResults[,4] < 0.01))
+length(which(pseudoLmResults[,6] < 0.01))
+
+length(which(pseudoLmResults_noParent[,2] < 0.01))
+length(which(pseudoLmResults_noParent[,4] < 0.01))
+length(which(pseudoLmResults_noParent[,6] < 0.01))
+
+```
