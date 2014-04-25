@@ -1,50 +1,16 @@
 Detection analysis on gene counts for common mind phase I RNAseq data
 ========================================================
+Kristen K Dang for Sage Bionetworks
 
 Load synapse and Ensembl gene counts file.
-
-```{r cache=TRUE, warning=FALSE,results='hide'}
-library('synapseClient')
-synapseLogin()
-dataFile = synGet('syn2340130')
-metaFile = synGet('syn2299154')
-```
-
-```{r cache=TRUE}
-geneCounts  = read.delim(dataFile@filePath, header=T, row.names = 1)
-metadata = read.csv(getFileLocation(metaFile))
-```
-
 ```{r warning=FALSE}
 setwd('~/Computing/commonmind/analysis')
+library('rGithubClient')
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+sourceRepoFile(sageCode, "cmc_code/cmc_routines.R")
 ```
 
-Which samples are repeated in the input file?
-
-```{r}
-which(table(metadata$DLPFC_RNA_isolation..Sample.RNA.ID) > 1)
-```
-
-Make final dataset, with bad samples excluded. 
-
-```{r}
-#colnames(metadata)
-metadata_freeze = metadata[-which(metadata$DLPFC_RNA_report..Exclude. == 1),]
-total_samples = nrow(metadata_freeze)
-table(metadata_freeze$DLPFC_RNA_report..Exclude.)
-metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID = factor(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
-
-metadata_freeze = metadata_freeze[order(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID),]
-geneCounts_freeze = geneCounts[,which(as.factor(colnames(geneCounts)) %in% metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)]
-geneCounts_freeze = geneCounts_freeze[,order(as.factor(colnames(geneCounts_freeze)))]
-
-head(colnames(geneCounts_freeze))
-head(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
-tail(colnames(geneCounts_freeze))
-tail(metadata_freeze$DLPFC_RNA_isolation..Sample.RNA.ID)
-```
 
 Detection analysis of biotypes
 -----------------------------------------------------------
@@ -57,42 +23,56 @@ rm(geneCounts_freeze_temp)
 totalBiotypeCounts = table(getBM(attributes=c("ensembl_gene_id", "gene_biotype"), mart=Hs)[,2])
 ```
 
+Plot distribution of number of samples detecting a gene.
+```{r}
+# Figure 1 and supplemental figure 1
+geneCounts_freeze_wdetect = addDetected(geneCounts_freeze[,1:618])
+range(geneCounts_freeze_wdetect$detected, na.rm = TRUE)
+hist(geneCounts_freeze_wdetect$detected, main = "gene detection -- all genes", xlab="number of samples detecting", ylab = "number of genes", col = "lightcyan2")
+pdf(file="fig1_hist_detect.pdf")
+hist(geneCounts_freeze_wdetect$detected, main = "gene detection -- all genes", xlab="number of samples detecting", ylab = "number of genes", col = "lightcyan2")
+dev.off()
+geneCounts_freeze_wdetect$biotype = geneCounts_freeze$biotype
+typesToPlot = names(table(geneCounts_freeze_wdetect$biotype))
+par(mfrow=c(3,3))
+for (i in 1:length(typesToPlot)) {
+hist(geneCounts_freeze_wdetect$detected[geneCounts_freeze_wdetect$biotype == typesToPlot[i]], main = typesToPlot[i], xlab = "number samples detecting", col = "lightcyan2", xlim = range(0,700))
+}
+par(mfrow=c(1,1))
+# end figure 1
+```
+
 
 ```{r echo=FALSE}
 plotDetectionByBiotype=function(inBiotypeCounts, inNormCounts){
   par(mfrow = c(3,3))
-  corrStats = matrix(0, nrow = nrow(inNormCounts), ncol = 2)
   for (i in 1:27) {
-     results = cor.test(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), inBiotypeCounts[i,])
-     corrStats[i,1] = as.vector(results[[3]])
-     corrStats[i,2] = as.vector(results[[4]])
-     
     plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), inNormCounts[i,], main = rownames(inBiotypeCounts)[i], xlab = "mapped reads", ylab = "fraction detected", ylim = range(0,1))
     lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), inNormCounts[i,]), col = "blue", lwd = 2)    
   }
-  
   # interesting categories -- this section for plotting selected results from the above detailed ones
 #   par(mfrow = c(2,3))
 #   interesting = c(2, 10,16,17,18,21)
 #   for (i in 1:length(interesting)) {
-#     plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), inNormCounts[interesting[i],], main = paste(rownames(inBiotypeCounts)[interesting[i]], "\nn=", detectedTotal[interesting[i]], sep = ""), xlab = "mapped reads", ylab = "fraction detected", ylim = range(0,1))
+#     plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), inNormCounts[interesting[i],], main = paste(rownames(inBiotypeCounts)[interesting[i]], "\nn=", EnsemblTotal[interesting[i]], sep = ""), xlab = "mapped reads", ylab = "fraction detected", ylim = range(0,1))
 #     lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), inNormCounts[interesting[i],]), col = "blue", lwd = 2)
 #   }
   par(mfrow = c(1,1))
-#  print(corrStats)
-  return(corrStats)
 }
 ```
 
-Plot detection per biotype across varying thresholds for minimum read count. Print correlation results and linear regression results.
-
+Plot detection per biotype across varying thresholds for minimum read count. Print linear regression results.
 ```{r echo=FALSE}
-corrResults = matrix(0, nrow = length(totalBiotypeCounts), ncol = 6)
-rownames(corrResults) = names(totalBiotypeCounts)
-colnames(corrResults) = rep(c("estimate", "pval"), 3)
 lmResults = matrix(0, nrow = length(totalBiotypeCounts), ncol = 6)
 rownames(lmResults) = names(totalBiotypeCounts)
 colnames(lmResults) = rep(c("estimate", "pval"), 3)
+
+lmRanges = matrix(0, nrow = length(totalBiotypeCounts), ncol = 6)
+rownames(lmRanges) = names(totalBiotypeCounts)
+colnames(lmRanges) = rep(c("low", "high"), 3)
+
+lmMeds = matrix(0, nrow = length(totalBiotypeCounts), ncol = 3)
+rownames(lmRanges) = names(totalBiotypeCounts)
 ```
 
 ```{r}
@@ -100,22 +80,123 @@ j = 1
 for (i in 2:4) {
   print(paste('Results for minimum count = ', i, sep = ''))
   biotypeCountsPerSampleFilter = apply(geneCounts_freeze[,1:total_samples], 2, countDetectedByBiotype, biotypes = geneCounts_freeze$biotype, filter=i)
-  detectedTotal = totalBiotypeCounts[which(names(totalBiotypeCounts) %in% rownames(biotypeCountsPerSampleFilter))]
-  normBiotypeCounts = apply(biotypeCountsPerSampleFilter, MARGIN=2, function(x) x/detectedTotal)
-  corrResults[1:length(detectedTotal),j:(j+1)] = plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts)
-  lmResults[1:length(detectedTotal),j:(j+1)] = regressDetectionOnMetadata(inDetectCounts=normBiotypeCounts, inMetaData=log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads))
+  EnsemblTotal = totalBiotypeCounts[which(names(totalBiotypeCounts) %in% rownames(biotypeCountsPerSampleFilter))]
+  normBiotypeCounts = apply(biotypeCountsPerSampleFilter, MARGIN=2, function(x) x/EnsemblTotal)
+  plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts)
+  coords = match(rownames(normBiotypeCounts), rownames(lmResults))
+  lmResults[coords,j:(j+1)] = regressDetectionOnMetadata(inDetectCounts=normBiotypeCounts, inMetaData=log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads))
+  lmRanges[coords,j:(j+1)] = t(apply(normBiotypeCounts,MARGIN=1,FUN=range))
+  lmMeds[coords,(i-1)] = apply(normBiotypeCounts,MARGIN=1,FUN=median, na.rm = TRUE)
   j = j + 2
 }
 ```
 
-```{r}
-print(corrResults)
-```
 
 Regression analysis of relationship between detection and depth per biotype.
 ```{r}
 # sets of two columns: first is beta estimate for slope, second is p-value
 print(lmResults)
+print(lmRanges)
+print(lmMeds)
+```
+
+Quadrant plot of fraction detected vs regression estimate.
+```{r}
+#optional figure
+toRemove = which(lmResults[,1] == 0)
+lmResults_reduced = lmResults[-toRemove,]
+lmRanges_reduced = lmRanges[-toRemove,]
+lmMeds_reduced = lmMeds[-toRemove,]
+plotcols = rainbow(nrow(lmRanges_reduced))
+plotcex = log10(totalBiotypeCounts)[-toRemove]
+indexToPlot = 1 # values = 1,3,5
+altIndex = 1 # values = 1,2,3
+#pdf(file="fig_opt_enhanced_scatter.pdf")
+plot(lmMeds_reduced[,altIndex],lmResults_reduced[,indexToPlot], xlim = range(0,1), ylim = range(0,1), xlab = "fraction detected", ylab = "genes per depth (slope estimate)", col = plotcols, pch = 16,cex=plotcex)
+segments(x0=lmRanges_reduced[,indexToPlot],y0=lmResults_reduced[,indexToPlot],x1=lmRanges_reduced[,(indexToPlot+1)],y1=lmResults_reduced[,indexToPlot], col = plotcols)
+legend("topright",legend=rownames(lmRanges_reduced),col=plotcols,pch=16,cex=0.7)
+#dev.off()
+# end optional figure
+```
+
+Now look separately at controls and cases, see if substantially different.
+```{r,echo=FALSE}
+giantRegressionFunction=function(inCounts,inMeta){
+  lmResults = matrix(0, nrow = length(totalBiotypeCounts), ncol = 6)
+  rownames(lmResults) = names(totalBiotypeCounts)
+  colnames(lmResults) = rep(c("estimate", "pval"), 3)
+  
+  lmRanges = matrix(0, nrow = length(totalBiotypeCounts), ncol = 6)
+  rownames(lmRanges) = names(totalBiotypeCounts)
+  colnames(lmRanges) = rep(c("low", "high"), 3)
+  
+  lmMeds = matrix(0, nrow = length(totalBiotypeCounts), ncol = 3)
+  rownames(lmRanges) = names(totalBiotypeCounts)
+  j = 1
+  for (i in 2:4) {
+    print(paste('Results for minimum count = ', i, sep = ''))
+    biotypeCountsPerSampleFilter = apply(inCounts, 2, countDetectedByBiotype, biotypes = geneCounts_freeze$biotype, filter=i)
+    EnsemblTotal = totalBiotypeCounts[which(names(totalBiotypeCounts) %in% rownames(biotypeCountsPerSampleFilter))]
+    normBiotypeCounts = apply(biotypeCountsPerSampleFilter, MARGIN=2, function(x) x/EnsemblTotal)
+#    plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts)
+    coords = match(rownames(normBiotypeCounts), rownames(lmResults))
+    lmResults[coords,j:(j+1)] = regressDetectionOnMetadata(inDetectCounts=normBiotypeCounts, inMetaData=log10(inMeta$DLPFC_RNA_report..Mapped.Reads))
+    lmRanges[coords,j:(j+1)] = t(apply(normBiotypeCounts,MARGIN=1,FUN=range))
+    lmMeds[coords,(i-1)] = apply(normBiotypeCounts,MARGIN=1,FUN=median, na.rm = TRUE)
+    j = j + 2
+  }
+  toRemove = which(lmResults[,1] == 0)
+  lmResults_reduced = lmResults[-toRemove,]
+  lmRanges_reduced = lmRanges[-toRemove,]
+  lmMeds_reduced = lmMeds[-toRemove,]
+  plotcols = rainbow(nrow(lmRanges_reduced))
+  plotcex = log10(totalBiotypeCounts)[-toRemove]
+  indexToPlot = 1 # values = 1,3,5
+  altIndex = 1 # values = 1,2,3
+  #pdf(file="fig_opt_enhanced_scatter.pdf")
+  plot(lmMeds_reduced[,altIndex],lmResults_reduced[,indexToPlot], xlim = range(0,1), ylim = range(0,1), xlab = "fraction detected", ylab = "genes per depth (slope estimate)", col = plotcols, pch = 16,cex=plotcex)
+  segments(x0=lmRanges_reduced[,indexToPlot],y0=lmResults_reduced[,indexToPlot],x1=lmRanges_reduced[,(indexToPlot+1)],y1=lmResults_reduced[,indexToPlot], col = plotcols)
+  legend("topright",legend=rownames(lmRanges_reduced),col=plotcols,pch=16,cex=0.7) 
+}
+```
+
+```{r,cache=TRUE}
+table(metadata_freeze$Dx)
+
+geneCounts_control = geneCounts_freeze[,which(metadata_freeze$Dx == "Control")]
+metadata_control = metadata_freeze[which(metadata_freeze$Dx == "Control"),]
+giantRegressionFunction(inCounts=geneCounts_control,inMeta=metadata_control)
+
+geneCounts_case = geneCounts_freeze[,which(metadata_freeze$Dx %in% c("SCZ", "BP"))]
+metadata_case = metadata_freeze[which(metadata_freeze$Dx %in% c("SCZ", "BP")),]
+giantRegressionFunction(inCounts=geneCounts_case,inMeta=metadata_case)
+
+```
+
+
+
+
+Look at fractional allocation of reads to biotypes across depths. Maybe look in controls only?
+```{r}
+biotypeCounts = apply(geneCounts_freeze[,1:618],MARGIN=2,function(x) tapply(x, geneCounts_freeze$biotype, FUN=sum))
+biotypeProportions = apply(biotypeCounts,MARGIN=2,function(x) x/sum(x))
+hist(biotypeProportions[18,])
+
+# Looks like fraction protein-coding decreases with depth, but nothing else changes much
+rownames(biotypeProportions)
+regressProportions=function(proportions){
+  x = summary(lm(proportions~log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+metadata_freeze$Dx))
+  return(c(x$coefficients[2,1],x$coefficients[2,4]))
+  }
+effectOfDepthOnFractions = apply(biotypeProportions,MARGIN=1,regressProportions)
+```
+
+Specifically, what fraction of reads are pseudogenes with low detection? These presumably are mis-alignments that take reads away from correct matches.
+```{r}
+lowDetectPseudo = intersect(which(geneCounts_freeze_wdetect$biotype == "pseudogene"), which(geneCounts_freeze_wdetect$detected < 550))
+lowDetectPseudoSums = apply(geneCounts_freeze[lowDetectPseudo,1:618],MARGIN=2,sum)
+hist(lowDetectPseudoSums, main = "number of reads attributable\nto pseudogenes with low detection", xlab = "pseudocount sum per sample", col = "lightcyan2")
+hist(lowDetectPseudoSums/colSums(geneCounts_freeze[,1:618]), main = "fraction of reads attributable to\npseudogenes with low detection", xlab = "pseudocount sum / total sum", col = "lightcyan2")
 ```
 
 Detection analysis of expression levels, all biotypes together.
@@ -238,39 +319,3 @@ length(intersect(neuron_and_synape, neuron_bgd))
 # not sure what other categories to do, or if I should expand BP and MF more. CC seems to show well that we are getting neuron=related expression. I could contrast with another CC?
 ```
 
-
-lincRNAs
-----------------------
-
-Make dataset.
-```{r fig.height=5, fig.width=5}
-lincRNA_geneCounts = geneCounts_freeze[which(geneCounts_freeze$biotype == "lincRNA"),]
-# get length
-linc_lengths = gene_lengths[which(gene_lengths$ensembl_gene_id %in% rownames(lincRNA_geneCounts)),c(1,4)]
-range(linc_lengths[,2])
-hist(log10(gene_lengths[which(gene_lengths$ensembl_gene_id %in% rownames(lincRNA_geneCounts)),4]), main = "lincRNA gene lengths", xlab = "log10(gene end - gene start)", breaks = 20)
-```
-
-
-Detection by length -- as we add seq depth, are we detecting more longer or shorter lincRNAs?
-```{r fig.height=4, fig.width=4}
-llincRNAs = which(linc_lengths[,2] > 1e5)
-slincRNAs = which(linc_lengths[,2] <= 1e5)
-llincRNA_detect = apply(lincRNA_geneCounts[llincRNAs,1:total_samples], MARGIN=2, FUN=countDetected)
-slincRNA_detect = apply(lincRNA_geneCounts[slincRNAs,1:total_samples], MARGIN=2, FUN=countDetected)
-hist(llincRNA_detect)
-hist(slincRNA_detect)
-```
-
-Note this includes all samples, not just control samples.
-
-```{r}
-plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect[1:total_samples]/length(llincRNAs), main = paste("detection of long lincRNAs", "\nn=", length(llincRNAs), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected out of total for this dataset", ylim = range(0,1))
-lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect/length(llincRNAs)), col = "blue", lwd = 2)    
-summary(lm(llincRNA_detect/length(llincRNAs) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)))
-
-plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), slincRNA_detect/length(slincRNAs), main = paste("detection of short-med lincRNAs", "\nn=", length(slincRNAs), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected out of total for this dataset", ylim = range(0,1))
-lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), slincRNA_detect/length(slincRNAs)), col = "blue", lwd = 2)    
-#cor.test(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads),slincRNA_detect/length(slincRNAs))
-summary(lm(slincRNA_detect/length(slincRNAs) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)))
-```
