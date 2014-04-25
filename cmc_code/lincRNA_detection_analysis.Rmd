@@ -1,0 +1,48 @@
+lincRNA detection analysis
+========================================================
+
+```{r warning=FALSE}
+setwd('~/Computing/commonmind/analysis')
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+sourceRepoFile(sageCode, "cmc_code/cmc_routines.R")
+```
+
+
+Make dataset.
+```{r fig.height=5, fig.width=5}
+geneCounts_freeze_temp = geneCounts_freeze
+geneCounts_freeze = addBiotype(geneCounts_freeze_temp)
+rm(geneCounts_freeze_temp)
+
+lincRNA_geneCounts = geneCounts_freeze[which(geneCounts_freeze$biotype == "lincRNA"),]
+# get length
+linc_lengths = gene_lengths[which(gene_lengths$ensembl_gene_id %in% rownames(lincRNA_geneCounts)),c(1,4)]
+range(linc_lengths[,2])
+hist(log10(gene_lengths[which(gene_lengths$ensembl_gene_id %in% rownames(lincRNA_geneCounts)),4]), main = "lincRNA gene lengths", xlab = "log10(gene end - gene start)", breaks = 20)
+```
+
+
+Detection by length -- as we add seq depth, are we detecting more longer or shorter lincRNAs?
+```{r fig.height=4, fig.width=4}
+llincRNAs = which(linc_lengths[,2] > 1e5)
+slincRNAs = which(linc_lengths[,2] <= 1e5)
+llincRNA_detect = apply(lincRNA_geneCounts[llincRNAs,1:total_samples], MARGIN=2, FUN=countDetected)
+slincRNA_detect = apply(lincRNA_geneCounts[slincRNAs,1:total_samples], MARGIN=2, FUN=countDetected)
+hist(llincRNA_detect)
+hist(slincRNA_detect)
+```
+
+Note this includes all samples, not just control samples.
+
+```{r}
+plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect[1:total_samples]/length(llincRNAs), main = paste("detection of long lincRNAs", "\nn=", length(llincRNAs), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected out of total for this dataset", ylim = range(0,1))
+lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), llincRNA_detect/length(llincRNAs)), col = "blue", lwd = 2)    
+summary(lm(llincRNA_detect/length(llincRNAs) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)))
+
+plot(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), slincRNA_detect/length(slincRNAs), main = paste("detection of short-med lincRNAs", "\nn=", length(slincRNAs), sep = ""), xlab = "log10(mapped reads)", ylab = "fraction detected out of total for this dataset", ylim = range(0,1))
+lines(lowess(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads), slincRNA_detect/length(slincRNAs)), col = "blue", lwd = 2)    
+#cor.test(log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads),slincRNA_detect/length(slincRNAs))
+summary(lm(slincRNA_detect/length(slincRNAs) ~ log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)))
+```

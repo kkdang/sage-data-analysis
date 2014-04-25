@@ -1,0 +1,72 @@
+Compare reported gender to estimated gender based on fraction Y chromosome alignments
+========================================================
+Kristen K Dang for Sage Bionetworks
+Feb. 5, 2014
+
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+library('synapseClient')
+setwd('~/Computing/commonmind/analysis/discord')
+synapseLogin()
+```
+
+Get metadata file
+```{r cache=TRUE}
+syn_report = synGet('syn2299154')
+merged_report = read.csv(getFileLocation(syn_report))
+grep(pattern="Total", x=colnames(merged_report))
+colnames(merged_report)[grep(pattern="Total", x=colnames(merged_report))]
+
+```
+
+Make two input files from the Ychrom\_counts.out file: one with counts and one with file names.
+First do some text file manipulation in unix:
+```{r}
+#$ awk '$1 !~ /[1-9]/' Ychrom_counts.txt | sed -e 's/samtools view -c \/projects\/CommonMind\/data\/FROM_CORE\/Production\/fastQ\/BySample\/tophat209.2.2\/tophat_//' | sed -e "s/'chrY'//" > Ychrom_names.out
+
+
+#$ awk '$1 ~ /[1-9]/' Ychrom_counts.txt > Ychrom_data.out
+```
+
+Then, read in counts on Y and file names in separate files and combine
+```{r}
+Ycounts = read.delim('~/Computing/commonmind/data/Ychrom_data.out', head = F)
+hist(log(Ycounts[,1]), main = "distribution of chrY alignments", col = "papayawhip", xlab = "log(Y counts)")
+Ynames = read.delim('~/Computing/commonmind/data/Ychrom_names.out', head = F)
+rownames(Ycounts) = matrix(unlist(strsplit(as.character(Ynames[,1]), split="/")),ncol = 2, byrow = T)[,1]
+Ycounts[,2] = merged_report$DLPFC_RNA_report..Total.Reads[match(rownames(Ycounts), merged_report$DLPFC_RNA_isolation..Sample.RNA.ID)]
+```
+
+Look at distribution of fraction reads aligned to Y: make sure distribution is bimodal, look for threshold.
+```{r}
+Ycounts[,3] = log(Ycounts[,1] / Ycounts[,2])
+
+hist(Ycounts[,3], col = "papayawhip", xlab = "log(Y counts/total counts)", breaks = 40, main = "distribution of fraction Y counts")
+hist(Ycounts[,3], col = "papayawhip", xlab = "log(Y counts/total counts)", breaks = 60, xlim = range(-8,-6))
+range(log(Ycounts[,1] / Ycounts[,2]), na.rm = T)
+```
+
+Assign gender based on read data.
+```{r}
+Ycounts[,4] = rep("Unknown", nrow(Ycounts))
+males = which(Ycounts[,3] > -7.4)
+Ycounts[males,4] = rep("Male", length(males))
+females = which(Ycounts[,3] <= -7.4)
+Ycounts[females,4] = rep("Female", length(females))
+colnames(Ycounts) = c("Y_counts", "total_reads", "Y_fraction", "calc_gender")
+Ycounts$calc_gender = as.factor(Ycounts$calc_gender)
+```
+
+Add gender from metadata.
+```{r}
+grep(pattern="Gender", x=colnames(merged_report))
+head(merged_report[,6])
+Ycounts[,5] = merged_report$Gender[match(rownames(Ycounts), merged_report$DLPFC_RNA_isolation..Sample.RNA.ID)]
+colnames(Ycounts) = c("Y_counts", "total_reads", "Y_fraction", "calc_gender", "reported_gender")
+levels(Ycounts$reported_gender) = levels(Ycounts$calc_gender) 
+```
+
+Compare gender assignments.
+```{r}
+diffGender = Ycounts[,4] != Ycounts[,5]
+Ycounts[which(diffGender),]
+```
