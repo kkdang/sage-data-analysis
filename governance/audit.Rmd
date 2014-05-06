@@ -1,0 +1,47 @@
+Audit figures
+========================================================
+
+User accounts
+```{r warning=FALSE,results='hide'}
+#library(lubridate)
+library(ggplot2)
+library(scales)
+```
+
+Read in data and summarize at the month level.
+```{r}
+ns_users = read.csv("~/Documents/governance/documents-export-2014-05-06/non-sage-users-updated.csv")
+creation = sapply(ns_users[,2],function(x) {substr(x,1,10)} )
+creation_months = table(sapply(ns_users[,2],function(x) {substr(x,1,7)} ))
+```
+
+New users per month
+```{r}
+# standard barpolot
+barplot(creation_months, las = 2, main = "Users added per month", ylab = "number of new users")
+
+# ggplot2 option
+creation_months_df = as.data.frame(creation_months)
+creation_months_df$date = as.Date(paste(creation_months_df[,1], "-28", sep=""))
+ggplot(data=creation_months_df, aes(x=date, y=Freq)) + geom_bar(stat="identity") + ggtitle("Users added per month") + ylab("number of new users")
+```
+
+Total users over time
+```{r}
+# dotchart option
+total_users = rep(NA,length(creation_months))
+names(total_users) = names(creation_months)
+total_users[1] = creation_months[1]
+for (i in 2:length(creation_months)) {
+  total_users[i] = total_users[i-1] + creation_months[i]
+}
+dotchart(total_users, main = "Total users over time", xlab = "total users")
+
+
+# ggplot2 option
+total_users_df = as.data.frame(total_users)
+total_users_df$date = as.Date(paste(rownames(total_users_df), "-28", sep=""))
+qplot(x=date, y = total_users, data=total_users_df, geom="line", main = "Total users over time", ylab = "total users")
+#last_plot() + scale_x_date(breaks = date_breaks("3 months"))
+```
+
