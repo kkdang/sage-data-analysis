@@ -24,7 +24,8 @@ metadata_control = metadata_freeze[which(metadata_freeze$Dx == "Control"),]
 
 Plot distribution of RIN
 ```{r}
-hist(metadata_control$DLPFC_RNA_isolation..RIN, breaks = 50, col = "peru")
+hist(metadata_control$DLPFC_RNA_isolation..RIN, breaks = 50, col = "peru", main = "sample quality\ncontrol samples only")
+hist(metadata$DLPFC_RNA_isolation..RIN, breaks = 50, col = "peru", main="sample quality\nall samples")
 lowRIN = which(metadata_control$DLPFC_RNA_isolation..RIN < 7)
 length(lowRIN)
 lowRIN_counts = geneCounts_control[,lowRIN]
@@ -37,15 +38,20 @@ What genes have largest changes in detection across samples when comparing sampl
 ```{r}
 lowRIN_detect = apply(lowRIN_counts,1,countDetected)
 highRIN_detect = apply(highRIN_counts,1,countDetected)
-boxplot(lowRIN_detect/ncol(lowRIN_counts), highRIN_detect/ncol(highRIN_counts),names=c("low RIN", "high RIN"))
-hist(lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts))
-# Genes with largest decrease of detection with higher RIN
+boxplot(lowRIN_detect/ncol(lowRIN_counts), highRIN_detect/ncol(highRIN_counts),names=c("low RIN", "high RIN"), ylab = "fraction of genes detected across samples")
+hist(lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts), main = "change in detection between\nhigh-low qual samples")
+```
+
+Genes with largest decrease of detection with higher RIN
+```{r}
 dDetect = rownames(geneCounts_control)[which((lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts)) > 0.5)]
 dDetect_tmp = data.frame(rep(NA, length(dDetect)))
 rownames(dDetect_tmp) = dDetect
 table(addBiotype(dDetect_tmp)$biotype)
+```
 
-# Genes with largest increase of detection with higher RIN
+Genes with largest increase of detection with higher RIN
+```{r}
 iDetect = rownames(geneCounts_control)[which((lowRIN_detect/ncol(lowRIN_counts) - highRIN_detect/ncol(highRIN_counts)) < -0.5)]
 iDetect_tmp = data.frame(rep(NA, length(iDetect)))
 rownames(iDetect_tmp) = iDetect
@@ -55,9 +61,9 @@ Looks like higher RIN finds fewer pseudogenes. This suggests reads are aligning 
 
 
 
-
 Which genes have significant association with detection by RIN? Per-gene logistic regression on detection vs RIN+depth. 
 ```{r,cache=TRUE,warning=FALSE}
+# This function looks at only control genes
 detectFilter=function(count,filter=2){
   if (count > filter) { return(1)}
   else { return(0) }
@@ -72,17 +78,16 @@ runLogistic=function(gCounts){
   else{return(c(NA, NA))}
 }
 
-RINeffectByGene = apply(X=geneCounts_control,MARGIN=1,FUN=runLogistic)
-
-hist(RINeffectByGene[1,], col = "lightcyan2")
-hist(RINeffectByGene[1,], col = "lightcyan2", xlim = range(0,0.01), breaks = 800)
-sigGenes = which(RINeffectByGene[1,] < .001)
-length(sigGenes)
+# RINeffectByGene = apply(X=geneCounts_control,MARGIN=1,FUN=runLogistic)
+# hist(RINeffectByGene[1,], col = "lightcyan2")
+# hist(RINeffectByGene[1,], col = "lightcyan2", xlim = range(0,0.01), breaks = 800)
+# sigGenes = which(RINeffectByGene[1,] < .001)
+# length(sigGenes)
 ```
 
 
 Alternate version, using all samples but controlling for Dx.
-```{r}
+```{r,cache=TRUE,warning=FALSE}
 runLogistic_wDx=function(gCounts){
   F = sapply(gCounts,FUN=detectFilter, simplify=TRUE)
   if (sum(F) < length(gCounts)){
@@ -95,7 +100,7 @@ runLogistic_wDx=function(gCounts){
 
 apply(X=geneCounts_freeze[2,],MARGIN=1,FUN=runLogistic_wDx)
 RINeffectByGene_wDx = apply(X=geneCounts_freeze,MARGIN=1,FUN=runLogistic_wDx)
-hist(RINeffectByGene_wDx[1,], col = "lightcyan2")
+hist(RINeffectByGene_wDx[1,], col = "lightcyan2", main = "pvalues of detection-RIN relationship")
 sigGenes = which(RINeffectByGene_wDx[1,] < .001)
 length(sigGenes)
 ```
@@ -103,9 +108,9 @@ length(sigGenes)
 
 Which genes have a significant increase in detection by RIN?
 ```{r}
-hist(RINeffectByGene[2,sigGenes], col = "lightcyan2", xlab = "coefficient estimate for RIN")
-sigGenesIncrease = which((RINeffectByGene[1,] < .001) & (RINeffectByGene[2,] >0))
-iRINsig = data.frame(t(RINeffectByGene[,sigGenesIncrease]))
+hist(RINeffectByGene_wDx[2,sigGenes], col = "lightcyan2", main = "coefficient estimates for RIN")
+sigGenesIncrease = which((RINeffectByGene_wDx[1,] < .001) & (RINeffectByGene_wDx[2,] >0))
+iRINsig = data.frame(t(RINeffectByGene_wDx[,sigGenesIncrease]))
 rownames(iRINsig) = names(sigGenesIncrease)
 iRINsig_wBiot = addBiotype(iRINsig)
 table(iRINsig_wBiot$biotype)
@@ -118,8 +123,8 @@ write.table(names(which(geneSums > 0)),file="detected_control_min1.txt", row.nam
 
 Which genes have a significant decrease in detection by RIN?
 ```{r}
-sigGenesDecrease = which((RINeffectByGene[1,] < .001) & (RINeffectByGene[2,] < 0))
-dRINsig = data.frame(RINeffectByGene[sigGenesDecrease])
+sigGenesDecrease = which((RINeffectByGene_wDx[1,] < .001) & (RINeffectByGene_wDx[2,] < 0))
+dRINsig = data.frame(RINeffectByGene_wDx[sigGenesDecrease])
 rownames(dRINsig) = names(sigGenesDecrease)
 table(addBiotype(dRINsig)$biotype)
 ```
@@ -134,7 +139,7 @@ boxplot(temp_data$RIN~temp_data$detected,names=c("not", "detected"), col = "this
 ```
 
 
-Setting up another logistic regression, where expression level of parent gene is taken into account.
+Setting up another logistic regression, where expression level of parent gene is taken into account. First get information on 'parent' genes of pseudogoenes.
 ```{r}
 #psiSetFile = synGet('syn2400043')
 dropSuffix=function(ID){
@@ -149,59 +154,83 @@ ensgt_matrix$parent = sapply(temp,dropSuffix)
 rm(temp)
 ```
 
+
+Reduce the input to a set of pseudogenes for which there is a parent gene with counts data in our dataset.
 ```{r}
 geneCounts_freeze_temp = geneCounts_freeze
 geneCounts_freeze = addBiotype(geneCounts_freeze_temp)
 rm(geneCounts_freeze_temp)
+pseudoCounts = geneCounts_freeze[which(geneCounts_freeze$biotype == "pseudogene"),1:(ncol(geneCounts_freeze)-1)]
 
-removeGenes=function(inData,indiciesToRemove){
-  return(inData[-indiciesToRemove,])
-}
-# Test the pseudogenes only against the linear model
-pseudoCounts = geneCounts_freeze[which(geneCounts_freeze$biotype == "pseudogene"),1:618]
-apply(X=pseudoCounts[1,],MARGIN=1,FUN=runLogistic_wDx)
-RINeffectByGene_wDx_pseudo = apply(X=pseudoCounts,MARGIN=1,FUN=runLogistic_wDx)
-hist(RINeffectByGene_wDx_pseudo[1,], col = "lightcyan2")
-
+# get positions of pseudocounts genes in ensgt_matrix
 z = match(rownames(pseudoCounts), ensgt_matrix[,1])
+# remove those that don't have an entry in ensgt_matrix
 pseudoCounts_tmp = pseudoCounts[-which(is.na(z)),]
+# get positions of pseudocounts genes in ensgt_matrix again
 z = match(rownames(pseudoCounts_tmp), ensgt_matrix[,1])
-#nameFrame = data.frame(rownames(pseudoCounts_tmp))
-pseudoParentIndicies_tmp = match((ensgt_matrix$parent[z]), rownames(geneCounts_freeze)) 
-#nameFrame$parentmatch = rownames(geneCounts_freeze)[pseudoParentIndicies_tmp]
+# reduce ensgt_matrix to the ones with a match in pseudoCounts, in order of pseudo
+ensgt_matrix_short = ensgt_matrix[z,]
+head(rownames(pseudoCounts_tmp))
+head(ensgt_matrix_short)
+
+# remove pseudoCounts entries that don't have a parent gene in ensgt_matrix_short
+pseudoParentIndicies_tmp = match((ensgt_matrix_short$parent), rownames(geneCounts_freeze)) 
 pseudoCounts_tmp2 = pseudoCounts_tmp[-which(is.na(pseudoParentIndicies_tmp)),]
-z = match(rownames(pseudoCounts_tmp2), ensgt_matrix[,1])
-pseudoParentIndicies = match((ensgt_matrix$parent[z]), rownames(geneCounts_freeze)) 
-pseudoParentCounts = geneCounts_freeze[pseudoParentIndicies,1:618]
+dim(pseudoCounts_tmp2)
+# get positions of pseudocounts genes in ensgt_matrix again
+z = match(rownames(pseudoCounts_tmp2), ensgt_matrix_short[,1])
+ensgt_matrix_short2 = ensgt_matrix_short[z,]
+head(ensgt_matrix_short2)
+dim(ensgt_matrix_short2)
+head(rownames(pseudoCounts_tmp2))
+
+# get parentCount matrix based on entries now present in ensgt_matrix_short2
+pseudoParentIndicies = match((ensgt_matrix_short2$parent), rownames(geneCounts_freeze)) 
+pseudoParentCounts = geneCounts_freeze[pseudoParentIndicies,1:(ncol(geneCounts_freeze)-1)]
+```
+
+Run the regression and plot results. 
+```{r,warning=FALSE}
+runLogistic_wDx_andParent=function(gCounts,parentCounts){
+  F = sapply(gCounts,FUN=detectFilter, simplify=TRUE)
+  if ((sum(F) < length(gCounts))&(sum(F) > 0)){
+    parentExp = log10(parentCounts/metadata_freeze$DLPFC_RNA_report..Mapped.Reads*1e6)
+    parentExp[which(parentExp %in% c("Inf", "-Inf"))] = NA
+    fit = try(glm(F~metadata_freeze$DLPFC_RNA_isolation..RIN+log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+metadata_freeze$Dx+parentExp,family=binomial()),silent=T)
+    if(length(fit) > 1) {
+      temp = summary(fit)
+      if (nrow(temp$coefficients) < 6) { return(rep(NA,6)) }
+      return(c(temp$coefficients[2,4], temp$coefficients[2,1], temp$coefficients[3,4], temp$coefficients[3,1],temp$coefficients[6,4], temp$coefficients[6,1] ))
+    }
+    else{return(rep(NA, 6))}
+  }
+  else{return(rep(NA, 6))}
+}
+
+tpseudocounts2 = data.frame(t(pseudoCounts_tmp2))
+tparentcounts = data.frame(t(pseudoParentCounts))
+mapply(runLogistic_wDx_andParent, gCounts=tpseudocounts2[,348:349], parentCounts=tparentcounts[,348:349])
+RINeffectByGene_wDx_pseudo = mapply(runLogistic_wDx_andParent, gCounts=tpseudocounts2, parentCounts=tparentcounts)
+hist(RINeffectByGene_wDx_pseudo[1,], col = "lightcyan2", main = "pval RIN")
+hist(RINeffectByGene_wDx_pseudo[2,], col = "lightcyan2", main = "est RIN", xlim = range(-100,100), breaks = 2000)
+hist(RINeffectByGene_wDx_pseudo[5,], col = "lightcyan2", main = "pval parent")
+hist(RINeffectByGene_wDx_pseudo[6,], col = "lightcyan2", main = "est parent", xlim = range(-10000,10000), breaks = 200)
 
 # Test the reduced pseudogenes only against the linear model
-RINeffectByGene_wDx_pseudofinal = apply(X=pseudoCounts_final,MARGIN=1,FUN=runLogistic_wDx)
+RINeffectByGene_wDx_pseudofinal = apply(X=pseudoCounts_final,MARGIN=1,FUN=runLogistic_wDx_andParent)
 hist(RINeffectByGene_wDx_pseudofinal[1,], col = "lightcyan2")
+```
 
+What fraction of pseudogenes tested do not change detection with respect to RIN or parent gene expression? This is an upper bound on valid fraction pseudogenes (ie true observations).
+```{r}
+length(which(RINeffectByGene_wDx_pseudo[1,] < 0.01)) # RIN
+length(which(RINeffectByGene_wDx_pseudo[3,] < 0.01)) # library size
+length(which(RINeffectByGene_wDx_pseudo[5,] < 0.01)) # parent expression
 
-pseudoBinary = t(apply(pseudoCounts_tmp2[,1:618],MARGIN=1,function(x) sapply(x,FUN=detectFilter,simplify=TRUE)))
-pseudoDetectCount = rowSums(pseudoBinary)
-length(which(pseudoDetectCount > 0))
-pseudoCounts_final = pseudoCounts_tmp2[-which(pseudoDetectCount == 0),]
-pseudoParentCounts_final = as.matrix(pseudoParentCounts[-which(pseudoDetectCount == 0),])
-
-pseudoLmResults = matrix(NA,nrow = nrow(pseudoCounts_final), ncol = 6)
-pseudoLmResults_noParent = matrix(NA,nrow = nrow(pseudoCounts_final), ncol = 6)
-colnames(pseudoLmResults) = c('RIN_est', 'RIN_pv', 'libsize', 'libsize_pv', 'parent', 'parent_pv')
-for (i in 1:nrow(pseudoCounts_final)) { 
-  parentExp = pseudoParentCounts_final[i,]/metadata_freeze$DLPFC_RNA_report..Mapped.Reads
-#  fit = glm(pseudoBinary[i,]~metadata_freeze$DLPFC_RNA_isolation..RIN+log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+parentExp+metadata_freeze$Dx,family=binomial())
-  fit = glm(pseudoBinary[i,]~metadata_freeze$DLPFC_RNA_isolation..RIN+log10(metadata_freeze$DLPFC_RNA_report..Mapped.Reads)+metadata_freeze$Dx,family=binomial())
-  temp = summary(fit)
-  pseudoLmResults[i,] = c(temp$coefficients[2,1], temp$coefficients[2,2], temp$coefficients[3,1], temp$coefficients[3,4], temp$coefficients[4,1], temp$coefficients[4,4]) 
-}
-
-length(which(pseudoLmResults[,2] < 0.01))
-length(which(pseudoLmResults[,4] < 0.01))
-length(which(pseudoLmResults[,6] < 0.01))
-
-length(which(pseudoLmResults_noParent[,2] < 0.01))
-length(which(pseudoLmResults_noParent[,4] < 0.01))
-length(which(pseudoLmResults_noParent[,6] < 0.01))
-
+parentAndRIN = union(which(RINeffectByGene_wDx_pseudo[1,] < 0.01), which(RINeffectByGene_wDx_pseudo[5,] < 0.01)) # either RIN or parent
+length(parentAndRIN)
+nonZeroResult = ncol(RINeffectByGene_wDx_pseudo) - length(which(is.na(RINeffectByGene_wDx_pseudo[1,])==TRUE)) # number of genes for which we were able to test (ie not an NA result)
+nonZeroResult
+fractionPotentiallyValid = 1-(length(parentAndRIN)/nonZeroResult)
+fractionPotentiallyValid
 ```
