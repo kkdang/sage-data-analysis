@@ -1,0 +1,43 @@
+# Harvard Brain Bank Clinical Data profile
+
+##### Kristen K. Dang for Sage Bionetworks
+##### Sept. 17, 2014
+
+Load libraries.
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+library(synapseClient)
+synapseLogin()
+library('gplots')
+library('VennDiagram')
+setwd('~/Computing/NIA-AMP-AD/')
+```
+
+Functions
+```{r}
+plotExploreData=function(inData,plotTitle){
+    if (length(which(!is.na(inData))) == 0) {next}
+    if (class(inData) %in% c("character", "logical")) {
+      barplot(table(inData), main = plotTitle, las = 2, col = "cornsilk1")
+    }
+    if (class(inData) %in% c("numeric")) {
+      hist(inData, main=plotTitle, col = "cornsilk1", xlab = "")
+    }
+    if (class(inData) %in% c("data.frame")) {
+      hist(as.numeric(inData), main=plotTitle, col = "cornsilk1", xlab = "")
+    }
+}
+```
+
+
+# Note that the clinical data is NOT xls format, despite the suffix
+```{r}
+HBB_entity = synGet("syn2450321")
+HBB_clinical = read.delim(getFileLocation(HBB_entity), row.names = 1)
+
+par(mfrow = c(3,3)) 
+for(i in 1:nrow(HBB_clinical)){
+  plotExploreData(inData=HBB_clinical[i,],plotTitle=rownames(HBB_clinical)[i])
+}
+#boxplot(t(HBB_clinical[2:26,]), las = 2, boxwex = 0.8)
+
+```
