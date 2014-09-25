@@ -29,7 +29,7 @@ plotExploreData=function(inData,plotTitle){
 ```
 
 
-# Note that the clinical data is NOT xls format, despite the suffix
+Plot the data
 ```{r}
 MSSMBB_entity = synGet("syn2706447")
 MSSMBB_clinical = read.delim(getFileLocation(MSSMBB_entity), row.names = 1)
