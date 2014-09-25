@@ -1,0 +1,47 @@
+# MSSM Brain Bank Clinical Data profile
+
+##### Kristen K. Dang for Sage Bionetworks
+##### Sept. 25, 2014
+
+Load libraries.
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+library(synapseClient)
+synapseLogin()
+library('gplots')
+library('VennDiagram')
+setwd('~/Computing/NIA-AMP-AD/')
+```
+
+Functions
+```{r}
+plotExploreData=function(inData,plotTitle){
+    if (length(which(!is.na(inData))) == 0) {next}
+    if (class(inData) %in% c("character", "logical")) {
+      barplot(table(inData), main = plotTitle, las = 2, col = "cornsilk1")
+    }
+    if (class(inData) %in% c("numeric", "integer")) {
+      hist(inData, main=plotTitle, col = "cornsilk1", xlab = "")
+    }
+    if (class(inData) %in% c("data.frame")) {
+      hist(as.numeric(inData), main=plotTitle, col = "cornsilk1", xlab = "")
+    }
+}
+```
+
+
+# Note that the clinical data is NOT xls format, despite the suffix
+```{r}
+MSSMBB_entity = synGet("syn2706447")
+MSSMBB_clinical = read.delim(getFileLocation(MSSMBB_entity), row.names = 1)
+MSSMBB_clinical$Sex = as.character(MSSMBB_clinical$Sex)
+MSSMBB_clinical$PLQ_Gr = as.character(MSSMBB_clinical$PLQ_Gr)
+MSSMBB_clinical$CDR = as.character(MSSMBB_clinical$CDR)
+MSSMBB_clinical$Braak = as.character(MSSMBB_clinical$Braak)
+
+par(mfrow = c(3,3)) 
+for(i in 1:ncol(MSSMBB_clinical)){
+  plotExploreData(inData=MSSMBB_clinical[,i],plotTitle=colnames(MSSMBB_clinical)[i])
+}
+#boxplot(t(MSSMBB_clinical[2:26,]), las = 2, boxwex = 0.8)
+
+```
