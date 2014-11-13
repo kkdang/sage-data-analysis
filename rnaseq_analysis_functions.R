@@ -98,6 +98,17 @@ regressDetectionOnMetadata=function(inDetectCounts, inMetaData){
 
 countDetected=function(x, filter=2){ sum(x > filter) }
 
+filterByFractionPresent=function(inDGE,fraction=0.1,minCount=2){
+  retain = apply(getCounts(inDGE),MARGIN=1,FUN=palx, x=fraction, filter=minCount)
+  return(inDGE[which(retain),])
+}
+
+palx=function(counts,x=0.1,filter=2){
+  tmp = length(which(counts >= filter))/length(counts)
+  if (tmp >= x) { return(TRUE)}
+  else { return(FALSE)}
+}
+
 addDetected=function(counts,filter=2){
   detected = apply(counts,MARGIN=1,function(x) {sum(x > filter)})
   counts$detected = detected
