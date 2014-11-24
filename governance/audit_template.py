@@ -70,13 +70,13 @@ for dataset in userFilesNeeded:
 	template = newTempl
 
 active_nonsage_entity = syn.get(entity=userFiles['active_non_sage_users.csv'])
-ACTIVE_NONSAGE = subprocess.check_output(' '.join(['wc -l', active_nonsage_entity.path]), shell=True).split()[0]
+ACTIVE_NONSAGE = str(int(subprocess.check_output(' '.join(['wc -l', active_nonsage_entity.path]), shell=True).split()[0])-1)
 newTempl = populateFields(field='ACTIVE_NONSAGE', val=ACTIVE_NONSAGE, modTemplate=template)
 template = newTempl
 
 
 active_sage_entity = syn.get(entity=userFiles['active_sage_users.csv'])
-ACTIVE_SAGE = subprocess.check_output(' '.join(['wc -l', active_sage_entity.path]), shell=True).split()[0]
+ACTIVE_SAGE = str(int(subprocess.check_output(' '.join(['wc -l', active_sage_entity.path]), shell=True).split()[0])-1)
 newTempl = populateFields(field='ACTIVE_SAGE', val=ACTIVE_SAGE, modTemplate=template)
 template = newTempl
 
@@ -87,7 +87,7 @@ projectsFiles = dict()
 qr = syn.chunkedQuery(''.join(['SELECT id, name FROM entity WHERE parentId=="', existingFolders['projects_files'], '"']))
 for result in qr:
 	projectsFiles[result['entity.name']] = result['entity.id']
-projectFilesNeeded = ['file_counts_snapshot_20140802.txt', 'file_counts_current_audit_period.txt']
+projectFilesNeeded = ['file_counts_snapshot_20141101.txt', 'file_counts_current_audit_period.txt', 'project_counts_snapshot_20141101.txt']
 for dataset in projectFilesNeeded:
 	newTempl = getData(filesDict=projectsFiles, fileName=dataset, modTemplate=template)
 	template = newTempl
@@ -95,7 +95,7 @@ for dataset in projectFilesNeeded:
 
 
 public_downloads_entity = syn.get(entity=projectsFiles['top_public_file_downloads_current_audit_period.csv'])
-AUDIT_PUBLIC_DOWNLOADS = subprocess.check_output(' '.join(['wc -l', public_downloads_entity.path]), shell=True).split()[0]
+AUDIT_PUBLIC_DOWNLOADS = str(int(subprocess.check_output(' '.join(['wc -l', public_downloads_entity.path]), shell=True).split()[0])-1)
 newTempl = populateFields(field='AUDIT_PUBLIC_DOWNLOADS', val=AUDIT_PUBLIC_DOWNLOADS, modTemplate=template)
 template = newTempl
 
@@ -109,13 +109,13 @@ newTempl = populateFields(field='AUDIT_CONTROLLED_DOWNLOADS', val=AUDIT_CONTROLL
 template = newTempl
 
 public_uploads_nonsage_entity = syn.get(entity=projectsFiles['public_file_uploads_non_sage_current_audit_period.csv'])
-AUDIT_PUBLIC_NONSAGE_UPLOADS = subprocess.check_output(' '.join(['wc -l', public_uploads_nonsage_entity.path]), shell=True).split()[0]
+AUDIT_PUBLIC_NONSAGE_UPLOADS = str(int(subprocess.check_output(' '.join(['wc -l', public_uploads_nonsage_entity.path]), shell=True).split()[0])-1)
 newTempl = populateFields(field='AUDIT_PUBLIC_NONSAGE_UPLOADS', val=AUDIT_PUBLIC_NONSAGE_UPLOADS, modTemplate=template)
 template = newTempl
 
 
 public_uploads_sage_entity = syn.get(entity=projectsFiles['public_file_uploads_sage_current_audit_period.csv'])
-AUDIT_PUBLIC_SAGE_UPLOADS = subprocess.check_output(' '.join(['wc -l', public_uploads_sage_entity.path]), shell=True).split()[0]
+AUDIT_PUBLIC_SAGE_UPLOADS = str(int(subprocess.check_output(' '.join(['wc -l', public_uploads_sage_entity.path]), shell=True).split()[0])-1)
 newTempl = populateFields(field='AUDIT_PUBLIC_SAGE_UPLOADS', val=AUDIT_PUBLIC_SAGE_UPLOADS, modTemplate=template)
 template = newTempl
 
@@ -124,3 +124,8 @@ template = newTempl
 #print '%s' % template
 for line in template:
 	print '%s' % line
+	
+	
+#wiki = syn.getWiki('syn2482323', subpageId='64950') real template
+# wiki = syn.getWiki('syn2482323', subpageId='67264') # test template
+# wiki.markdown = 
