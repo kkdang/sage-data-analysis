@@ -1,0 +1,4 @@
+# ignore HTML files
+*.html
+# ignore markdown
+*.md
