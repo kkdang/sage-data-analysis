@@ -13,8 +13,7 @@ getByBiotype=function(biotype="protein_coding", gene=TRUE){
     return(getBM(attributes=c("ensembl_gene_id"),filters="biotype",values=biotype, mart=Hs))    
   }
   else {
-    ### need to fix this part
-#   return(getBM(attributes=c("ensembl_transcript_id"),filters="biotype",values=biotype, mart=Hs))
+   return(getBM(attributes=c("ensembl_transcript_id"),filters="transcript_biotype",values=biotype, mart=Hs))
   }
 }
 
@@ -113,4 +112,40 @@ addDetected=function(counts,filter=2){
   detected = apply(counts,MARGIN=1,function(x) {sum(x > filter)})
   counts$detected = detected
   return(counts)
+}
+
+plotExploreData=function(inData,plotTitle){
+  if (length(which(!is.na(inData))) == 0) {next}
+  if (class(inData) %in% c("character", "logical")) {
+    barplot(table(inData), main = plotTitle, las = 2, col = "cornsilk1")
+  }
+  if (class(inData) %in% c("numeric", "integer")) {
+    hist(inData, main=plotTitle, col = "cornsilk1", xlab = "")
+  }
+  if (class(inData) %in% c("data.frame")) {
+    hist(as.numeric(inData), main=plotTitle, col = "cornsilk1", xlab = "")
+  }
+}
+runGoseq=function(lrt,pcutoff=0.05){
+  result = topTags(lrt,n=10000)
+  plotSmear(lrt,de.tags=rownames(result$table[which(result$table$FDR<pcutoff),]))
+  genes=as.integer(p.adjust(result$table$PValue[result$table$logFC!=0], method="BH")<pcutoff)
+  names(genes)=row.names(result$table[result$table$logFC!=0,])
+  table(genes)
+  pwf=nullp(genes,"hg19","ensGene")
+  GO.wall=goseq(pwf,"hg19","ensGene")
+  enriched.GO=GO.wall$category[p.adjust(GO.wall$over_represented_pvalue, method="BH")<pcutoff]
+  for(go in enriched.GO){
+    x = GOTERM[[go]]
+    print(Term(x))
+  }
+}
+
+calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FALSE){
+  lrt = glmLRT(in.fit, contrast=inContrast)
+  result = topTags(lrt,n=10000)
+  x = length(which(result$table$FDR<pcutoff))
+  plotSmear(lrt,de.tags=rownames(result$table[which(result$table$FDR<pcutoff),]),main=plotTitle)
+  if (goseq) {runGoseq(lrt,pcutoff=pcutoff)}
+  return(list(numSig=x,lrt=lrt))
 }
