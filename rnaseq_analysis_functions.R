@@ -149,3 +149,15 @@ calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FA
   if (goseq) {runGoseq(lrt,pcutoff=pcutoff)}
   return(list(numSig=x,lrt=lrt))
 }
+
+plotFCfractionalResults=function(inFC){
+  totals = rowSums(inFC)
+  fractions = inFC / totals
+  op = par(mai = c(3,1.3,1,1))
+  boxplot(fractions, las = 2, col = "powderblue", ylab = "fraction of total reads",main = "read destinies")
+  par(op)
+  op = par(mfrow = c(1,2))
+  hist(fractions[,1], main = "distribution of assigned counts", xlab = "fraction of assigned pairs")
+  hist(inFC[,1], main = "distribution of assigned counts", xlab = "number of assigned pairs")
+  par(op)
+}
