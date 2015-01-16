@@ -10,26 +10,31 @@ readFC=function(inFile){
 }
 
 counts = sapply(datafiles_nosummary,readFC)
-data = read.delim(paste("COUNTfeaturecounts",datafiles_nosummary[1],sep="/"), header = TRUE, row.names =1)
+data = read.delim(paste("COUNTfeaturecounts",datafiles_nosummary[1],sep="/"), header = TRUE, row.names =1, skip=1)
 rownames(counts) = rownames(data)
 
 zz = as.list(colnames(counts))
 b = sapply(zz,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})
 colnames(counts) = b
-write.csv(t(counts), file="featurecounts_readcounts.csv", quote = FALSE)
+write.csv(counts, file="featurecounts_readcounts.csv", quote = FALSE)
 
 
 
 readFCsummary=function(inFile){
   print(inFile)
-  data = read.delim(inFile, header = TRUE, row.names =1)
+  data = read.delim(paste("COUNTfeaturecounts",inFile,sep="/"), header = TRUE, row.names =1)
   if (ncol(data) > 0) { return(data[,1])  }
   else {return(rep(NA,9)) }
 }
 
 metrics = sapply(summaryfiles,readFCsummary)
-data = read.delim(summaryfiles[1], header = TRUE, row.names =1)
+data = read.delim(paste("COUNTfeaturecounts",summaryfiles[1],sep="/"), header = TRUE, row.names =1)
 rownames(metrics) = rownames(data)
+
+zz = as.list(colnames(metrics))
+b = sapply(zz,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})
+colnames(metrics) = b
+
 write.csv(t(metrics), file="featurecounts_metrics.csv", quote = FALSE)
 # To do a CSV upload, will need to first delete the header line of this file and all rows containing NA
 
