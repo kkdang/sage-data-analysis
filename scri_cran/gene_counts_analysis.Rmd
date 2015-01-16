@@ -22,33 +22,51 @@ hist(align$CODING_BASES/250)
 hist(align$CORRECT_STRAND_READS/2)
 ```
 
+
+Experimental variables
+```{r cache=TRUE}
+clinicalTable = synTableQuery('SELECT * FROM syn2823605')
+```
+
 Counting results summary
 ```{r cache=TRUE}
-metricsEntity = synGet('syn2821246')
-counting = read.delim(getFileLocation(metricsEntity), header = TRUE, row.names = 1, sep = " ")
-countingDM = data.matrix(counting)
-hist(countingDM[1,], main = "distribution across samples of total counts")
-pie(rowMeans(countingDM))
+# Using data as Table in Synapse
+metricsTable = synTableQuery('SELECT * FROM syn3105973')
+metrics = metricsTable@values
+rownames(metrics) = metrics[,1]
+metrics = data.matrix(metrics[,2:10])
+pie(colMeans(metrics))
+hist(rowSums(metrics), main = "distribution across samples of total counts\n(read pairs)", col = "powderblue")
+plotFCfractionalResults(metrics)
+
+# Look at characteristics of low-count samples.
+# Which samples have fewer than 20 million assigned read pairs?
+lowReads = names(which(metrics[,1] < 20e6))
+# Are they cases or controls? 
+table(clinicalTable@values$"Sample Type"[match(lowReads,as.character(clinicalTable@values$SeqSampleName))])
+table(clinicalTable@values$"Sample Type")
+
 ```
 
 Sample-level expression values
 ```{r cache=TRUE}
-dataEntity = synGet('syn2820309')
+dataEntity = synGet('syn2820309') # estimated Reads
 library('R.utils')
-geneCounts  = read.delim(gunzip(getFileLocation(dataEntity)), header=T, row.names = 1, sep = " ")
+gunzip(getFileLocation(dataEntity),overwrite=TRUE)
+x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
 detach("package:R.utils", unload=TRUE)
+geneCounts = read.csv(x, row.names = 1)
 
-casesEntity = synGet('syn2776535')
-cases = read.delim(getFileLocation(casesEntity), head = FALSE)[,1]
-controlsEntity = synGet('syn2776533')
-controls = read.delim(getFileLocation(controlsEntity), head = FALSE)[,1]
-
+controlSampleIDs = clinicalTable@values$SeqSampleName[which(clinicalTable@values$"Sample Type" == "Control")]
 casesStatus = rep("case", ncol(geneCounts))
-casesStatus[which(colnames(geneCounts) %in% paste("X", controls, sep=""))] = "control"
+casesStatus[which(colnames(geneCounts) %in% paste("X", controlSampleIDs, sep=""))] = "control"
 
 data.dge = DGEList(counts=geneCounts,group=factor(casesStatus),remove.zeros=TRUE)
 data_palx.dge = filterByFractionPresent(data.dge,fraction=0.05)
 data_palx.dge = calcNormFactors(data_palx.dge)
+control.dge = data_palx.dge[,which(data_palx.dge$samples$group == "control")]
+cases.dge = data_palx.dge[,which(data_palx.dge$samples$group == "case")]
+
 
 # Library sizes
 hist(data_palx.dge$samples$lib.size)
@@ -69,6 +87,7 @@ cases.ave = aveLogCPM(cases.dge)
 boxplot(control.ave, main = "ave gene expression, controls")
 boxplot(cases.ave, main = "ave gene expression, cases")
 
+plotColors = c("red", "blue")
 plot(density(cases.ave), col = "red", lwd = 2, main = "per-sample ave density plot")
 lines(density(control.ave), col = "blue", lwd = 2)
 legend("topright", legend=c("cases", "control"), col=plotColors,pch=16)
@@ -83,7 +102,7 @@ highBoth = intersect(highCases, highControls)
 highExpGenes = rownames(data_palx.dge)[highCases]
 highExpGenes_vals = rep(0, length(highExpGenes))
 names(highExpGenes_vals) = highExpGenes
-write.table(highExpGenes,file="list_highExpGenes.txt",quote=FALSE,row.names=FALSE,col.names=FALSE)
+#write.table(highExpGenes,file="list_highExpGenes.txt",quote=FALSE,row.names=FALSE,col.names=FALSE)
 
 #library('topGO')
 #sampleGOdata <- new("topGOdata",ontology = "BP",allGenes = highExpGenes_vals, geneSel = function(p) {p < 0.01}, annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "Ensembl")
@@ -117,50 +136,6 @@ detectFilter_entrez = unique(detect_entrez$entrez[which(detect_entrez$detected4_
 ```
 
 
-Functional Profiles using GO of detected genes
-
-
-GO "Cellular Component" ontology, level 6
-```{r cache=TRUE}
-#data.cc6.profiles = basicProfile(genelist=detect_entrez$entrez,onto="CC",level=6,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
-#save(data.cc6.profiles,file="data_cc6_profiles.bz2",compress="bzip2")
-load("data_cc6_profiles.bz2")
-#print(data.cc6.profiles, percentage=TRUE)
-#hist(data.cc6.profiles[[1]]$Frequency, breaks = 20)
-z = which(data.cc6.profiles[[1]]$Frequency < 300)
-data.cc6.profiles.reduced = data.cc6.profiles
-data.cc6.profiles.reduced[[1]] = data.cc6.profiles.reduced[[1]][-z,]
-rm(z)
-plotProfiles(data.cc6.profiles.reduced, "Major functional profiles\nall samples",percentage = F, multiplePlots = F,labelWidth=28)
-```
-
-GO "Biological Process" ontology, level 4
-```{r cache=TRUE}
-#data.bp4.profiles = basicProfile(genelist=detect_entrez$entrez,onto="BP",level=4,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
-#save(data.bp4.profiles,file="data_bp4_profiles.bz2",compress="bzip2")
-load("data_bp4_profiles.bz2")
-#print(data.bp4.profiles, percentage=TRUE)
-#hist(data.bp4.profiles[[1]]$Frequency, breaks = 20)
-z = which(data.bp4.profiles[[1]]$Frequency < 1700)
-data.bp4.profiles.reduced = data.bp4.profiles
-data.bp4.profiles.reduced[[1]] = data.bp4.profiles.reduced[[1]][-z,]
-rm(z)
-plotProfiles(data.bp4.profiles.reduced, "Major functional profiles\nall samples",percentage = F, multiplePlots = F,labelWidth=27)
-```
-
-GO "Molecular Function" ontology, level 5
-```{r cache=TRUE}
-#data.mf5.profiles = basicProfile(genelist=detect_entrez$entrez,onto="MF",level=5,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
-#save(data.mf5.profiles,file="data_mf5_profiles.bz2",compress="bzip2")
-load("data_mf5_profiles.bz2")
-#print(data.mf5.profiles, percentage=TRUE)
-#hist(data.mf5.profiles[[1]]$Frequency, breaks = 50)
-z = which(data.mf5.profiles[[1]]$Frequency < 200)
-data.mf5.profiles.reduced = data.mf5.profiles
-data.mf5.profiles.reduced[[1]] = data.mf5.profiles.reduced[[1]][-z,]
-rm(z)
-plotProfiles(data.mf5.profiles.reduced, "Major functional profiles\nall samples",percentage = F, multiplePlots = F,labelWidth=28)
-```
 
 Functional profile of high expression genes
 ```{r cache=TRUE}
@@ -168,9 +143,9 @@ temp = addEntrez(inCounts=as.data.frame(highExpGenes_vals))
 toRemove = which(is.na(temp$entrez))
 
 
-#highexp.mf5.profiles = basicProfile(genelist=temp$entrez,onto="MF",level=5,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
+highexp.mf5.profiles = basicProfile(genelist=temp$entrez,onto="MF",level=5,orgPackage="org.Hs.eg.db", empty.cats=FALSE)
 #save(highexp.mf5.profiles,file="highexp_mf5_profiles.bz2",compress="bzip2")
-load("highexp_mf5_profiles.bz2")
+#load("highexp_mf5_profiles.bz2")
 #print(highexp.mf5.profiles, percentage=TRUE)
 #hist(highexp.mf5.profiles[[1]]$Frequency, breaks = 50)
 z = which(highexp.mf5.profiles[[1]]$Frequency < 2)
@@ -178,7 +153,5 @@ highexp.mf5.profiles.reduced = highexp.mf5.profiles
 highexp.mf5.profiles.reduced[[1]] = highexp.mf5.profiles.reduced[[1]][-z,]
 rm(z)
 plotProfiles(highexp.mf5.profiles.reduced, "Major functional profiles\nhigh expression genes",percentage = F, multiplePlots = F,labelWidth=28)
-
-boxplot(cpm(data.dge,normalized.lib.sizes=TRUE,log=TRUE)[26200,], main = "IGF1")
 
 ```
