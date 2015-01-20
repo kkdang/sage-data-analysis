@@ -161,3 +161,14 @@ plotFCfractionalResults=function(inFC){
   hist(inFC[,1], main = "distribution of assigned counts", xlab = "number of assigned pairs")
   par(op)
 }
+
+plotSFfractionalResults=function(inSF){
+  fractions = inSF[,c(2,3)] / inSF[,1]
+  op = par(mai = c(3,1.3,1,1))
+  boxplot(fractions, las = 2, col = "powderblue", ylab = "fraction of total kmers",main = "kmer destinies")
+  par(op)
+  op = par(mfrow = c(1,2))
+  hist(inSF[,4], main = "distribution of mapped kmers", xlab = "fraction of mapped kmers (mappedRatio)")
+  hist(inSF[,2], main = "distribution of mapped kmers", xlab = "number of mapped kmers")
+  par(op)
+}
