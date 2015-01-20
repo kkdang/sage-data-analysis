@@ -1,0 +1,37 @@
+# KKD for Sage Bionetworks
+# Jan. 20, 2014
+
+```{r message=FALSE,warning=FALSE}
+library('synapseClient')
+synapseLogin()
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+setwd('/Users/kristen/Computing/cranio/')
+```
+
+
+Experimental variables
+```{r cache=TRUE}
+clinicalTable = synTableQuery('SELECT * FROM syn2823605')
+```
+
+Counting results summary
+```{r cache=TRUE}
+# Using data as Table in Synapse
+metricsTable = synTableQuery('SELECT * FROM syn2809454')
+metrics = metricsTable@values
+rownames(metrics) = metrics[,1]
+metrics = data.matrix(metrics[,2:ncol(metricsTable@values)])
+pie(colMeans(metrics)[c(2,3)], main = "average kmer mapping success")
+hist(metrics[,1], main = "distribution across samples of total kmers\n(single kmers)", col = "powderblue")
+plotSFfractionalResults(metrics)
+
+# Look at characteristics of low-count samples.
+# Which samples have fewer than 20 million assigned read pairs?
+lowReads = names(which(metrics[,2] < 40e8))
+# Are they cases or controls? 
+table(clinicalTable@values$"Sample Type"[match(lowReads,as.character(clinicalTable@values$SeqSampleName))])
+table(clinicalTable@values$"Sample Type")
+
+```
