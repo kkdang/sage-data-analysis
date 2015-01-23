@@ -1,0 +1,61 @@
+---
+title: "detection_profile"
+author: "Kristen Dang"
+date: "January 20, 2015"
+output: html_document
+---
+```{r}
+library('rGithubClient')
+library(edgeR)
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+sourceRepoFile(sageCode, "detection_profiling_functions.R")
+```
+
+# Get data
+```{r}
+dataEntity = synGet('syn2820309') # featurecounts read counts
+library('R.utils')
+gunzip(getFileLocation(dataEntity),overwrite=TRUE)
+x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
+detach("package:R.utils", unload=TRUE)
+geneCounts = read.csv(x, row.names = 1)
+rm(x)
+total_samples = ncol(geneCounts)
+
+data.dge = DGEList(counts=geneCounts,remove.zeros=TRUE)
+data_palo.dge = calcNormFactors(data.dge)
+rm(data.dge)
+
+```
+
+
+
+# Detection analysis of biotypes
+```{r}
+# PALO data, no filter for protein-coding
+paloResult = simplifyBiotypeCategories(data_palo.dge,biomart=Hs)
+paloCounts_wdetect = plotNumSamplesDetecting(paloResult$data)
+paloRegressResults = runRegressionAndPlot(paloCounts_wdetect,bioCategoryCounts = paloResult$observedCounts,totalBiotypeCounts = paloResult$totalCounts)
+quadrantPlot(paloRegressResults,observedBioCounts = paloResult$observedCounts)
+
+
+## Note to self: play with detection filter to try to eliminate the spurious detections...is there a model that can be learned from the data to set the cutoff so it is not arbitrary?
+z = table(paloCounts_wdetect$detected)
+bound = ceiling(.25*total_samples)
+detectThreshold = mean(as.vector(z[bound:(bound*2)])) / total_samples 
+
+data_palx15.dge = filterByFractionPresent(data_palo.dge,fraction = 0.15,minCount = 1)
+palx15Result = simplifyBiotypeCategories(data_palx15.dge,biomart=Hs)
+palx15Counts_wdetect = plotNumSamplesDetecting(palx15Result$data)
+palx15RegressResults = runRegressionAndPlot(palx15Counts_wdetect,bioCategoryCounts = palx15Result$observedCounts,totalBiotypeCounts = palx15Result$totalCounts)
+quadrantPlot(palx15RegressResults,observedBioCounts = palx15Result$observedCounts)
+
+
+data_palx50.dge = filterByFractionPresent(data_palo.dge,fraction = 0.50,minCount = 1)
+palx50Result = simplifyBiotypeCategories(data_palx50.dge,biomart=Hs)
+palx50Counts_wdetect = plotNumSamplesDetecting(palx50Result$data)
+```
+
+
+
