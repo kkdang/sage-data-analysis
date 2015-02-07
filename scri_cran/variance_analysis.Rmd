@@ -6,101 +6,16 @@ output: html_document
 ---
 
 ```{r message=FALSE,warning=FALSE}
+library('FactoMineR')
 library('synapseClient')
 synapseLogin()
-library(ggplot2)
-library(scales)
-library(lubridate)
-library(edgeR)
 
 library('rGithubClient')
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+source('~/Computing/sage-data-analysis/scri_cran/cranio_common_routines.R')
 setwd('/Users/kristen/Computing/cranio/')
 cutoff = 0.01
-```
-
-
-Alignment results
-```{r cache=TRUE}
-alignEntity = synGet('syn2820392')
-align = read.csv(getFileLocation(alignEntity))
-colnames(align)
-```
-
-
-Sample-level expression values
-```{r}
-# Fix the sample names of the estimated read count data
-lookupEnt = synGet("syn2770057")
-lookup = read.csv(getFileLocation(lookupEnt))
-clinicalTable = synTableQuery('SELECT * FROM syn2823605')
-clinicalData = clinicalTable@values
-
-noMatch = which(is.na(match(lookup$UDF.Investigator.Sample.Name, clinicalData$"Px Code")))
-lookup[noMatch,]
-
-lookupRev = lookup
-lookupRev$UDF.Investigator.Sample.Name = as.character(lookup$UDF.Investigator.Sample.Name)
-lookupRev$UDF.Investigator.Sample.Name = replace(x=lookupRev$UDF.Investigator.Sample.Name, list=noMatch, values=c("1071", "1059", "1075"))
-noMatch2 = which(is.na(match(lookupRev$UDF.Investigator.Sample.Name, clinicalData$"Px Code")))
-rm(noMatch, noMatch2, lookup)
-```
-
-
-Clinical and experimental data
-```{r}
-controlSampleIDs = clinicalTable@values$SeqSampleName[which(clinicalTable@values$"Sample Type" == "Control")]
-
-fixdate=function(inSplitDate){
-  if (as.numeric(inSplitDate[3]) < 15) {inSplitDate[3] = paste("20", inSplitDate[3], sep = "")}
-  outDate = paste(inSplitDate[1],inSplitDate[2], inSplitDate[3], sep="/")
-  return(outDate)
-}
-cleanUpDates=function(inDateData){
-  splitDates = strsplit(as.character(inDateData),split="/")
-  fixedDates = sapply(splitDates,fixdate)
-  return(as.Date(mdy(fixedDates)))
-}
-
-```
-
-
-Function to generate data object
-```{r}
-generateDataAndClinicalObj=function(synId){
-  dataEntity = synGet(synId) # estimated Reads
-  library('R.utils')
-  gunzip(getFileLocation(dataEntity),overwrite=TRUE)
-  x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
-  detach("package:R.utils", unload=TRUE)
-  estReads = read.csv(x, row.names = 1)
-  colnames(estReads) = lookupRev$UDF.Investigator.Sample.Name[match(colnames(estReads), paste("X", lookupRev$Sample.Name,sep = ""))]
-  
-  casesStatus = rep("case", ncol(estReads))
-  casesStatus[which(colnames(estReads) %in% paste("X", controlSampleIDs, sep=""))] = "control"
-
-  data.dge = DGEList(counts=estReads,group=factor(casesStatus),remove.zeros=TRUE)
-  
-  # Remove clinical data for samples that don't have matching seq data.
-  noMatch = which(is.na(match(clinicalData$"Px Code", colnames(data.dge))))
-  clinicalDataR = clinicalData[-noMatch,]
-  
-  # clean up date data
-   x = cleanUpDates(clinicalDataR[,8])
-  clinicalDataR[,8] = x
-  x = cleanUpDates(clinicalDataR[,9])
-  clinicalDataR[,9] = x
-  x = cleanUpDates(clinicalDataR[,12])
-  clinicalDataR[,12] = x
-  x = cleanUpDates(clinicalDataR[,13])
-  clinicalDataR[,13] = x
-  x = cleanUpDates(clinicalDataR[,14])
-  clinicalDataR[,14] = x
-  
-  return(list(DGE=data.dge, VARS=clinicalDataR))
-}
-
 ```
 
 
@@ -108,76 +23,73 @@ Function to make PC datasets with different filters
 ```{r}
 proteinCoding_transcripts = getByBiotype(biotype = 'protein_coding',gene = FALSE)
 proteinCoding_genes = getByBiotype(biotype = 'protein_coding',gene = TRUE)
+FM_PCA=function(in.dge){
+  result.prc = PCA(X = t(cpm(in.dge,normalized.lib.sizes=TRUE)),scale.unit = TRUE,ncp = 5,graph = FALSE)
+#  barplot(result.prc$eig$"percentage of variance", main = "percentage of variance per pc")
+  barplot(result.prc$eig$"percentage of variance"[1:20], ylab = "% variance") 
+  return(result.prc)
+}
 
-generate_PCA_datasets=function(in.dge,pcNames){
+prcomp_PCA=function(in.dge){
+  prc = prcomp(t(cpm(in.dge,normalized.lib.sizes=TRUE)),center=TRUE,scale=TRUE,retx = TRUE)
+  barplot((prc$sdev^2/sum(prc$sdev^2))[1:20], ylab = "fraction variance") 
+  return(prc)
+}
+
+generate_PCA_datasets=function(in.dge,pcNames,factoMine=FALSE){
   
   #### Make several filtered datasets ####
-  data_palx.dge = filterByFractionPresent(in.dge,fraction=0.05)
-  data_palx.dge = calcNormFactors(data_palx.dge)
-  
+
   ## All data, PALO
   palo.dge = calcNormFactors(in.dge)
   
-  ## PALX=5%, mincount = 2
-  palx.dge = filterByFractionPresent(in.dge,fraction=0.05,minCount=2)
-  palx.dge = calcNormFactors(palx.dge)
+  ## PALX=5%
+  palx5.dge = filterByFractionPresent(in.dge,fraction=0.05,minCount=1)
+  palx5.dge = calcNormFactors(palx5.dge)
   
-  ## PALX=30%, mincount = 2
-  palx30.dge = filterByFractionPresent(in.dge,fraction=0.30,minCount=2)
+  ## PALX=30%
+  palx30.dge = filterByFractionPresent(in.dge,fraction=0.30,minCount=1)
   palx30.dge = calcNormFactors(palx30.dge)
   
   ## Protein-coding genes, PALO
   b = as.list(rownames(in.dge))
-  strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})
-  
+  strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})  
   pc.dge = in.dge[which(strippedNames %in% pcNames[,1]),]
-  pc_palo.dge = calcNormFactors(pc.dge)
+  pc_palo.dge = DGEList(counts = getCounts(pc.dge),group = pc.dge$samples$group)
+  pc_palo.dge = calcNormFactors(pc_palo.dge)
   
-  ## Protein-coding genes, PALX, mincount = 2
-  pc_palx_mincount2.dge = filterByFractionPresent(pc_palo.dge,fraction=0.1,minCount=2)
-  pc_palx_mincount2.dge = calcNormFactors(pc_palx_mincount2.dge)
+  ## Protein-coding genes, PALX=5%
+  pc_palx5.dge = filterByFractionPresent(pc_palo.dge,fraction=0.05,minCount=1)
+  pc_palx5.dge = calcNormFactors(pc_palx5.dge)
   
-  ## Protein-coding genes, PALX=20%, mincount = 2
-  pc_palx20_mincount2.dge = filterByFractionPresent(pc_palo.dge,fraction=0.2,minCount=2)
-  pc_palx20_mincount2.dge = calcNormFactors(pc_palx20_mincount2.dge)
-
+  ## Protein-coding genes, PALX=20%
+  pc_palx20.dge = filterByFractionPresent(pc_palo.dge,fraction=0.2,minCount=1)
+  pc_palx20.dge = calcNormFactors(pc_palx20.dge)
   
   
   ### PCA via SVD on standardized,centered cpm expression values ####
-  par(mfrow = c(3,3))
-  palo.prc = prcomp(cpm(palo.dge,normalized.lib.sizes=TRUE),center=TRUE,scale=TRUE)
-  screeplot(palo.prc)
+  if (factoMine) {
+    op = par(mfrow = c(2,3))
+    FM_PCA(palo.dge)
+    FM_PCA(palx5.dge)
+    FM_PCA(palx30.dge)
+    FM_PCA(pc_palo.dge)
+    FM_PCA(pc_palx5.dge)
+    FM_PCA(pc_palx20.dge)
+    par(op)  
+  }
   
-  palx30.prc = prcomp(cpm(palx30.dge,normalized.lib.sizes=TRUE),center=TRUE,scale=TRUE)
-  screeplot(palx30.prc)
-  
-  pc_palo.prc = prcomp(cpm(pc_palo.dge,normalized.lib.sizes=TRUE),center=TRUE,scale=TRUE)
-  screeplot(pc_palo.prc)
-  
-  pc_palx.prc = prcomp(cpm(pc_palx_mincount2.dge,normalized.lib.sizes=TRUE),center=TRUE,scale=TRUE)
-  screeplot(pc_palx.prc)
-  
-  pc_palx20.prc = prcomp(cpm(pc_palx20_mincount2.dge,normalized.lib.sizes=TRUE),center=TRUE,scale=TRUE)
-  screeplot(pc_palx20.prc)
-  #biplot(pc_palx20.prc)
-  par(mfrow = c(1,1))
-  
-  allPCAs = cbind(palo.prc$sdev,palx30.prc$sdev,pc_palo.prc$sdev, pc_palx.prc$sdev, pc_palx20.prc$sdev)
-  boxplot(log(allPCAs))
-  allPCAs[1:20,]
-  
-  # If I replace 5000 genes with data drawn from a random normal distribution, does it affect the PCs?
-#   temp = cpm(pc_palx20_mincount2.dge,normalized.lib.sizes=TRUE)
-#   toPerturb = unique(runif(5000,min=1,max=nrow(temp)))
-#   hist(log10(temp))
-#   for(i in 1:length(toPerturb)){
-#     temp[toPerturb[i],] = 10^rnorm(n=249,mean=3,sd=1)
-#     }
-#   hist(log10(temp), main = "data distribution after replacing some with simulated")
-#   temp.prc = prcomp(temp, center=TRUE, scale=TRUE)
-#   screeplot(temp.prc)
-  
-  return(pc_palo.prc)
+  else {
+    op = par(mfrow = c(2,3))
+    prcomp_PCA(palo.dge)
+    prcomp_PCA(palx5.dge)
+    prcomp_PCA(palx30.dge)
+    prcomp_PCA(pc_palo.dge)
+    prcomp_PCA(pc_palx5.dge)
+    prcomp_PCA(pc_palx20.dge)
+    par(op)
+  }
+  return(pc_palo.dge)
 }
 ```
 
@@ -188,16 +100,16 @@ pcaCorrelation=function(x,y){cor.test(x,y)$p.value }
 pcaCorrelationVal=function(x,y){cor.test(x,y)$estimate }
 pcaLM=function(x,y){summary(lm(x ~ y))$coefficients[2,4]}
 
-calc_plot_PC_corr=function(in.prc,inClinical=clinicalDataR){
+calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR){
   # Using correlation against eigenvectors from all PALO data
-  clinicalPCAcorrelations = matrix(NA, nrow = nrow(in.prc$rotation), ncol = ncol(inClinical)-1)
+  clinicalPCAcorrelations = matrix(NA, nrow = nrow(in.pca), ncol = ncol(inClinical)-1)
   colnames(clinicalPCAcorrelations) = rep("default", ncol(clinicalPCAcorrelations))
   
   k = 1
   # correlate numeric factors on log scale
   toRun = c(5,10,15)
   for (j in k:length(toRun)) {
-    clinicalPCAcorrelations[,j] = apply(in.prc$rotation,MARGIN=2,pcaCorrelation,y=log(inClinical[,toRun[j]]))
+    clinicalPCAcorrelations[,j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=log(inClinical[,toRun[j]]))
     colnames(clinicalPCAcorrelations)[j] = colnames(inClinical)[toRun[j]]
     }
   k = k + length(toRun) -1
@@ -205,7 +117,7 @@ calc_plot_PC_corr=function(in.prc,inClinical=clinicalDataR){
   # correlate one numeric factor on non-log since it is already normal
   toRun = c(11)
   for (j in 1:length(toRun)) {
-    clinicalPCAcorrelations[,k+j] = apply(in.prc$rotation,MARGIN=2,pcaCorrelation,y=inClinical[,toRun[j]])
+    clinicalPCAcorrelations[,k+j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=inClinical[,toRun[j]])
     colnames(clinicalPCAcorrelations)[k+j] = colnames(inClinical)[toRun[j]]
     }
   k = k + length(toRun) 
@@ -214,7 +126,7 @@ calc_plot_PC_corr=function(in.prc,inClinical=clinicalDataR){
   # correlate against all numeric dates
   toRun = c(8,9,12,13,14)
   for (j in 1:length(toRun)) {
-    clinicalPCAcorrelations[,k+j] = apply(in.prc$rotation,MARGIN=2,pcaCorrelation,y=as.numeric(inClinical[,toRun[j]]))
+    clinicalPCAcorrelations[,k+j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=as.numeric(inClinical[,toRun[j]]))
     colnames(clinicalPCAcorrelations)[k+j] = colnames(inClinical)[toRun[j]]
     }
   k = k + length(toRun) 
@@ -222,7 +134,7 @@ calc_plot_PC_corr=function(in.prc,inClinical=clinicalDataR){
   # regress against categorical factors
   toRun = c(6,7,16,17)
   for (j in 1:length(toRun)) {
-    clinicalPCAcorrelations[,k+j] = apply(in.prc$rotation,MARGIN=2,pcaLM,y=inClinical[,toRun[j]])
+    clinicalPCAcorrelations[,k+j] = apply(in.pca,MARGIN=2,pcaLM,y=inClinical[,toRun[j]])
     colnames(clinicalPCAcorrelations)[k+j] = colnames(inClinical)[toRun[j]]
     }
   
@@ -244,16 +156,16 @@ Function to correlate with alignment metrics
 
 calc_plot_alignPC_corr=function(in.prc,inAlign){
   # Using correlation against eigenvectors
-  alignPCAcorrPval = matrix(NA, nrow = nrow(in.prc$rotation), ncol = ncol(inAlign))
+  alignPCAcorrPval = matrix(NA, nrow = nrow(in.prc), ncol = ncol(inAlign))
   colnames(alignPCAcorrPval) = rep("default", ncol(alignPCAcorrPval))
-  alignPCAcorrelations = matrix(NA, nrow = nrow(in.prc$rotation), ncol = ncol(inAlign))
+  alignPCAcorrelations = matrix(NA, nrow = nrow(in.prc), ncol = ncol(inAlign))
   colnames(alignPCAcorrelations) = rep("default", ncol(alignPCAcorrelations))
   
   # correlate percentages and bias fractions
   for (j in 1:ncol(inAlign)) {
-    alignPCAcorrPval[,j] = apply(in.prc$rotation,MARGIN=2,pcaCorrelation,y=inAlign[,j])
+    alignPCAcorrPval[,j] = apply(in.prc,MARGIN=2,pcaCorrelation,y=inAlign[,j])
     colnames(alignPCAcorrPval)[j] = colnames(inAlign)[j]
-    alignPCAcorrelations[,j] = apply(in.prc$rotation,MARGIN=2,pcaCorrelationVal,y=inAlign[,j])
+    alignPCAcorrelations[,j] = apply(in.prc,MARGIN=2,pcaCorrelationVal,y=inAlign[,j])
     colnames(alignPCAcorrelations)[j] = colnames(inAlign)[j]
     }
   
@@ -262,8 +174,8 @@ calc_plot_alignPC_corr=function(in.prc,inAlign){
   boxplot(alignPCAcorrPval[,1:ncol(alignPCAcorrPval)], las = 2)
   par(op)
   boxplot(t(alignPCAcorrPval[1:15,1:ncol(alignPCAcorrPval)]), las = 2, main = "Correlation of each PCs vs each factor", ylab = "raw pvalue")
-  dotchart(t(alignPCAcorrPval[1:2,1:ncol(alignPCAcorrPval)]), xlab = "pvalue", main = "Correlation with PC1 and PC2",bg="tomato",lcolor="tomato",cex=1.1)
-  dotchart(t(alignPCAcorrPval[1:2,1:ncol(alignPCAcorrPval)]), xlab = "pvalue", main = "Correlation with PC1 and PC2", xlim = range(0,0.1),bg="tomato",lcolor="tomato",cex=1.1)
+  dotchart(t(alignPCAcorrPval[1:2,1:ncol(alignPCAcorrPval)]), xlab = "pvalue", main = "Correlation with PC1 and PC2",bg="tomato",lcolor="tomato")
+  dotchart(t(alignPCAcorrPval[1:2,1:ncol(alignPCAcorrPval)]), xlab = "pvalue", main = "Correlation with PC1 and PC2", xlim = range(0,0.1),bg="tomato",lcolor="tomato")
   abline(v=0.05, lty = 2)
   abline(v = 0.01, lty = 3)
   
@@ -280,7 +192,6 @@ calc_plot_alignPC_corr=function(in.prc,inAlign){
   dotchart(t(alignPCAcorrelations[3:4,1:ncol(alignPCAcorrelations)]), xlab = "correlation estimate", main = "Correlation with PC3 and PC4",bg="tomato",lcolor="tomato",cex=1.1, xlim=range(-1,1))
   abline(v = 0, lty = 3)
 }
-
 ```
 
 
@@ -297,16 +208,42 @@ par(op)
 library(corrgram)
 corrgram(alignToCheck,lower.panel = panel.pts,upper.panel = panel.pie)
 
+plotcols = c("orangered", "royalblue")
+
+pcaPlots=function(in.dge,pcNames){
+  par(op)
+  pc_palo.dge = generate_PCA_datasets(in.dge = in.dge, pcNames=pcNames)
+  pc_palx20.pca = prcomp_PCA(filterByFractionPresent(inDGE = pc_palo.dge,fraction = 0.2,minCount = 1))
+  #biplot(pc_palx20.pca,var.axes = FALSE)
+  # Factomine plot of samples
+  caseStatus = as.character(pc_palo.dge$samples$group)
+  caseStatus[which(clinicalDataR$"Sample Type" == "Control")] = "control"
+  fm20.pca = FM_PCA(filterByFractionPresent(inDGE = pc_palo.dge,fraction = 0.2,minCount = 1))
+  plot.PCA(fm20.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "none")
+  legend("topright",legend = c("case", "control"),col = plotcols,pch = 16)
+  calc_plot_PC_corr(in.pca = pc_palx20.pca$x,inClinical = clinicalDataR)
+  calc_plot_alignPC_corr(in.prc = pc_palx20.pca$x,inAlign = alignToCheck)
+  par(op)
+}
+
+##################
 # Estimated reads
 tmp = generateDataAndClinicalObj('syn3064890')
 data.dge = tmp$DGE
 clinicalDataR = tmp$VARS
 head(clinicalDataR)
 clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$"Px Code"),]
-pc_palo.prc = generate_PCA_datasets(in.dge = data.dge, pcNames=proteinCoding_transcripts)
-calc_plot_PC_corr(in.prc = pc_palo.prc,inClinical = clinicalDataR)
-calc_plot_alignPC_corr(in.prc = pc_palo.prc,inAlign = alignToCheck)
+temp = clinicalDataR
+toConvert = c(8,9,12,13,14)
+for (i in toConvert){
+  temp[,i] = as.numeric(temp[,i])
+}
+corrgram(temp,lower.panel = panel.pts,upper.panel = panel.pie)
+rm(temp)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts)
 
+
+##################
 # Estimate Kmers
 plot(1, main = "estimated Kmers")
 tmp = generateDataAndClinicalObj('syn3098045')
@@ -314,12 +251,10 @@ data.dge = tmp$DGE
 clinicalDataR = tmp$VARS
 head(clinicalDataR)
 clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$"Px Code"),]
-pc_palo.prc = generate_PCA_datasets(in.dge = data.dge, pcNames=proteinCoding_transcripts)
-calc_plot_PC_corr(in.prc = pc_palo.prc,inClinical = clinicalDataR)
-calc_plot_alignPC_corr(in.prc = pc_palo.prc,inAlign = alignToCheck)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts)
 
-
-# TPM
+#########
+## TPM ##
 # Using slighly different code, since this data is already TPM and doesn't need cpm transformation
 plot(1, main = "TPM")
 dataEntity = synGet('syn3064954') 
@@ -328,67 +263,39 @@ gunzip(getFileLocation(dataEntity),overwrite=TRUE)
 x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
 detach("package:R.utils", unload=TRUE)
 estReads = read.csv(x, row.names = 1)
-  
 colnames(estReads) = lookupRev$UDF.Investigator.Sample.Name[match(colnames(estReads), paste("X", lookupRev$Sample.Name,sep = ""))]
-casesStatus = rep("case", ncol(estReads))
-casesStatus[which(colnames(estReads) %in% paste("X", controls, sep=""))] = "control"
+
 
 data.dge = DGEList(counts=estReads,group=factor(casesStatus),remove.zeros=TRUE)
 b = as.list(rownames(data.dge))
 strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})
-pc.dge = data.dge[which(strippedNames %in% proteinCoding_transcripts[,1]),]
+tmp.dge = data.dge[which(strippedNames %in% proteinCoding_transcripts[,1]),]
+pc.dge = DGEList(getCounts(tmp.dge),group = tmp.dge$samples$group)
+caseStatus = as.character(pc.dge$samples$group)
+caseStatus[which(clinicalDataR$"Sample Type" == "Control")] = "control"
 
 head(clinicalDataR)
 clinicalDataR = clinicalDataR[match(colnames(pc.dge),clinicalDataR$"Px Code"),]
-pc_palo.prc = prcomp(getCounts(pc.dge),center=TRUE,scale=TRUE)
-screeplot(pc_palo.prc)
-calc_plot_PC_corr(in.prc = pc_palo.prc,inClinical = clinicalDataR)
-calc_plot_alignPC_corr(in.prc = pc_palo.prc,inAlign = alignToCheck)
+tpm_pc.prc = prcomp(t(getCounts(pc.dge)),center=TRUE,scale=TRUE,retx = TRUE)
+barplot((tpm_pc.prc$sdev^2/sum(tpm_pc.prc$sdev^2))[1:20], ylab = "fraction variance") 
+# Factomine plot of samples
+tpm_fm20.pca = PCA(X = t(getCounts(pc.dge)),scale.unit = TRUE,ncp = 5,graph = FALSE)
+barplot(tpm_fm20.pca$eig$"percentage of variance"[1:20], ylab = "% variance") 
+plot.PCA(tpm_fm20.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "none")
+legend("topright",legend = c("case", "control"),col = plotcols,pch = 16)
+par(op)
+calc_plot_PC_corr(in.pca = tpm_pc.prc$x,inClinical = clinicalDataR)
+calc_plot_alignPC_corr(in.prc = tpm_pc.prc$x,inAlign = alignToCheck)
+par(op)
 
-
-# Gene counts
+#################
+## Gene counts ##
 plot(1, main = "gene counts")
+par(mai = c(1.991176, 1.600749, 1.600749, 0.819896))
 tmp = generateDataAndClinicalObj('syn2820309')
 data.dge = tmp$DGE
 clinicalDataR = tmp$VARS
 head(clinicalDataR)
 clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$"Px Code"),]
-pc_palo.prc = generate_PCA_datasets(in.dge = data.dge, pcNames=proteinCoding_genes)
-calc_plot_PC_corr(in.prc = pc_palo.prc,inClinical = clinicalDataR)
-calc_plot_alignPC_corr(in.prc = pc_palo.prc,inAlign = alignToCheck)
-
-```
-
-
-
-
-Dispersion distribution and MDS on dispersion diffences
-```{r}
-## Look at dispersion across genes
-# plotDispersion=function(inDGE){
-#   inDGE$samples$group = factor(rep.int(1, length(inDGE$samples$group)))
-#   twd = estimateTagwiseDisp(estimateCommonDisp(inDGE), grid.length = 100)
-#   hist(twd$tagwise.dispersion)
-# }
-# palo.dge = estimateTagwiseDisp(estimateCommonDisp(palo.dge))
-# plotBCV(palo.dge)
-# 
-# pc_palo.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palo.dge))
-# plotBCV(pc_palo.dge)
-# 
-# pc_palx_mincount2.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palx_mincount2.dge))
-# plotBCV(pc_palx_mincount2.dge)
-# plotDispersion(inDGE=pc_palx_mincount2.dge)
-# length(which(pc_palx_mincount2.dge$tagwise.dispersion > 0.5))
-# 
-# plotCols = c("red", "blue")
-# pc_palx.mds = plotMDS(pc_palx_mincount2.dge, col = plotCols[as.numeric(pc_palx_mincount2.dge$samples$group)], method="bcv", top=2000, labels=as.numeric(pc_palx_mincount2.dge$samples$group))
-# 
-# 
-# 
-# pc_palx.cmd = cmdscale(pc_palx.mds$distance.matrix, eig = TRUE) 
-# barplot(pc_palx.cmd$eig)
-# hist(abs(pc_palx.cmd$eig))
-# hist(abs(pc_palx.cmd$eig), xlim = range(10,30), ylim = range(0,10),breaks = 20)
-# which(abs(pc_palx.cmd$eig) > 10)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_genes)
 ```
