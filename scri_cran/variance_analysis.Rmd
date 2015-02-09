@@ -100,43 +100,27 @@ pcaCorrelation=function(x,y){cor.test(x,y)$p.value }
 pcaCorrelationVal=function(x,y){cor.test(x,y)$estimate }
 pcaLM=function(x,y){summary(lm(x ~ y))$coefficients[2,4]}
 
-calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR){
+calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR,categorical=c()){
   # Using correlation against eigenvectors from all PALO data
-  clinicalPCAcorrelations = matrix(NA, nrow = nrow(in.pca), ncol = ncol(inClinical)-1)
+  clinicalPCAcorrelations = matrix(NA, nrow = nrow(in.pca), ncol = ncol(inClinical))
   colnames(clinicalPCAcorrelations) = rep("default", ncol(clinicalPCAcorrelations))
   
-  k = 1
-  # correlate numeric factors on log scale
-  toRun = c(5,10,15)
-  for (j in k:length(toRun)) {
-    clinicalPCAcorrelations[,j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=log(inClinical[,toRun[j]]))
+  # Correlate with numeric factors using pearson
+  toRun = setdiff(seq(1,ncol(inClinical)),categorical)
+  for (j in 1:length(toRun)) {
+    clinicalPCAcorrelations[,j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=inClinical[,toRun[j]])
     colnames(clinicalPCAcorrelations)[j] = colnames(inClinical)[toRun[j]]
-    }
-  k = k + length(toRun) -1
+  }
   
-  # correlate one numeric factor on non-log since it is already normal
-  toRun = c(11)
-  for (j in 1:length(toRun)) {
-    clinicalPCAcorrelations[,k+j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=inClinical[,toRun[j]])
-    colnames(clinicalPCAcorrelations)[k+j] = colnames(inClinical)[toRun[j]]
-    }
-  k = k + length(toRun) 
-  
-  
-  # correlate against all numeric dates
-  toRun = c(8,9,12,13,14)
-  for (j in 1:length(toRun)) {
-    clinicalPCAcorrelations[,k+j] = apply(in.pca,MARGIN=2,pcaCorrelation,y=as.numeric(inClinical[,toRun[j]]))
-    colnames(clinicalPCAcorrelations)[k+j] = colnames(inClinical)[toRun[j]]
-    }
-  k = k + length(toRun) 
-  
-  # regress against categorical factors
-  toRun = c(6,7,16,17)
-  for (j in 1:length(toRun)) {
-    clinicalPCAcorrelations[,k+j] = apply(in.pca,MARGIN=2,pcaLM,y=inClinical[,toRun[j]])
-    colnames(clinicalPCAcorrelations)[k+j] = colnames(inClinical)[toRun[j]]
-    }
+  # Regress against categorical factors
+  temp = matrix(NA, nrow = nrow(in.pca), ncol = length(categorical))
+  colnames(temp) = rep("default", ncol(temp))
+  for (j in 1:length(categorical)) {
+    temp[,j] = apply(in.pca,MARGIN=2,pcaLM,y=inClinical[,categorical[j]])
+    colnames(temp)[j] = colnames(inClinical)[categorical[j]]
+  }
+  clinicalPCAcorrelations[,(ncol(clinicalPCAcorrelations)-length(categorical)+1):ncol(clinicalPCAcorrelations)] = temp
+  colnames(clinicalPCAcorrelations)[(ncol(clinicalPCAcorrelations)-length(categorical)+1):ncol(clinicalPCAcorrelations)] = colnames(temp)
   
   op = par(mai = c(3,1,1,1))
   boxplot(clinicalPCAcorrelations[,1:13], las = 2)
@@ -186,11 +170,6 @@ calc_plot_alignPC_corr=function(in.prc,inAlign){
   boxplot(t(alignPCAcorrelations[1:15,1:ncol(alignPCAcorrelations)]), las = 2, main = "Correlation of each PCs vs each factor", ylab = "correlation estimate")
   dotchart(t(alignPCAcorrelations[1:2,1:ncol(alignPCAcorrelations)]), xlab = "correlation estimate", main = "Correlation with PC1 and PC2",bg="tomato",lcolor="tomato",cex=1.1, xlim=range(-1,1))
   abline(v = 0, lty = 3)
-  
-  
-  # PC 3 and PC4
-  dotchart(t(alignPCAcorrelations[3:4,1:ncol(alignPCAcorrelations)]), xlab = "correlation estimate", main = "Correlation with PC3 and PC4",bg="tomato",lcolor="tomato",cex=1.1, xlim=range(-1,1))
-  abline(v = 0, lty = 3)
 }
 ```
 
@@ -210,7 +189,7 @@ corrgram(alignToCheck,lower.panel = panel.pts,upper.panel = panel.pie)
 
 plotcols = c("orangered", "royalblue")
 
-pcaPlots=function(in.dge,pcNames){
+pcaPlots=function(in.dge,pcNames,clin=correctedClinical,categ=categ){
   par(op)
   pc_palo.dge = generate_PCA_datasets(in.dge = in.dge, pcNames=pcNames)
   pc_palx20.pca = prcomp_PCA(filterByFractionPresent(inDGE = pc_palo.dge,fraction = 0.2,minCount = 1))
@@ -221,7 +200,7 @@ pcaPlots=function(in.dge,pcNames){
   fm20.pca = FM_PCA(filterByFractionPresent(inDGE = pc_palo.dge,fraction = 0.2,minCount = 1))
   plot.PCA(fm20.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "none")
   legend("topright",legend = c("case", "control"),col = plotcols,pch = 16)
-  calc_plot_PC_corr(in.pca = pc_palx20.pca$x,inClinical = clinicalDataR)
+  calc_plot_PC_corr(in.pca = pc_palx20.pca$x,inClinical=clin,categorical=categ)
   calc_plot_alignPC_corr(in.prc = pc_palx20.pca$x,inAlign = alignToCheck)
   par(op)
 }
@@ -238,9 +217,11 @@ toConvert = c(8,9,12,13,14)
 for (i in toConvert){
   temp[,i] = as.numeric(temp[,i])
 }
+temp[,c(5,10,15)] = log(temp[,c(5,10,15)])
 corrgram(temp,lower.panel = panel.pts,upper.panel = panel.pie)
+correctedClinical = temp
 rm(temp)
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4)
 
 
 ##################
@@ -251,7 +232,7 @@ data.dge = tmp$DGE
 clinicalDataR = tmp$VARS
 head(clinicalDataR)
 clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$"Px Code"),]
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4)
 
 #########
 ## TPM ##
@@ -266,12 +247,12 @@ estReads = read.csv(x, row.names = 1)
 colnames(estReads) = lookupRev$UDF.Investigator.Sample.Name[match(colnames(estReads), paste("X", lookupRev$Sample.Name,sep = ""))]
 
 
-data.dge = DGEList(counts=estReads,group=factor(casesStatus),remove.zeros=TRUE)
+data.dge = DGEList(counts=estReads,remove.zeros=TRUE)
 b = as.list(rownames(data.dge))
 strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})
 tmp.dge = data.dge[which(strippedNames %in% proteinCoding_transcripts[,1]),]
 pc.dge = DGEList(getCounts(tmp.dge),group = tmp.dge$samples$group)
-caseStatus = as.character(pc.dge$samples$group)
+caseStatus = rep("case",times = ncol(data.dge))
 caseStatus[which(clinicalDataR$"Sample Type" == "Control")] = "control"
 
 head(clinicalDataR)
@@ -284,18 +265,18 @@ barplot(tpm_fm20.pca$eig$"percentage of variance"[1:20], ylab = "% variance")
 plot.PCA(tpm_fm20.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "none")
 legend("topright",legend = c("case", "control"),col = plotcols,pch = 16)
 par(op)
-calc_plot_PC_corr(in.pca = tpm_pc.prc$x,inClinical = clinicalDataR)
+calc_plot_PC_corr(in.pca = tpm_pc.prc$x,inClinical=correctedClinical[,5:(ncol(correctedClinical)-1)],categorical=c(6,7,16,17)-4)
 calc_plot_alignPC_corr(in.prc = tpm_pc.prc$x,inAlign = alignToCheck)
 par(op)
 
 #################
 ## Gene counts ##
 plot(1, main = "gene counts")
-par(mai = c(1.991176, 1.600749, 1.600749, 0.819896))
 tmp = generateDataAndClinicalObj('syn2820309')
 data.dge = tmp$DGE
 clinicalDataR = tmp$VARS
 head(clinicalDataR)
 clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$"Px Code"),]
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_genes)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_genes,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4)
+
 ```
