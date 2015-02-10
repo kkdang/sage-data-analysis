@@ -3,6 +3,7 @@
 # RNAseq analysis functions
 
 library(biomaRt)
+library(limma)
 #Hs = useMart("ensembl") # use this one normally
 Hs=useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org") # use this one when biomart.org is down
 Hs = useDataset("hsapiens_gene_ensembl", Hs)
@@ -99,7 +100,8 @@ countDetected=function(x, filter=2){ sum(x > filter) }
 
 filterByFractionPresent=function(inDGE,fraction=0.1,minCount=2){
   retain = apply(getCounts(inDGE),MARGIN=1,FUN=palx, x=fraction, filter=minCount)
-  return(inDGE[which(retain),])
+  filtered = DGEList(getCounts(inDGE[which(retain),]), group = inDGE$samples$group)
+  return(filtered)
 }
 
 palx=function(counts,x=0.1,filter=2){
@@ -141,13 +143,22 @@ runGoseq=function(lrt,pcutoff=0.05){
   }
 }
 
-calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FALSE){
-  lrt = glmLRT(in.fit, contrast=inContrast)
-  result = topTags(lrt,n=10000)
-  x = length(which(result$table$FDR<pcutoff))
-  plotSmear(lrt,de.tags=rownames(result$table[which(result$table$FDR<pcutoff),]),main=plotTitle)
-  if (goseq) {runGoseq(lrt,pcutoff=pcutoff)}
-  return(list(numSig=x,lrt=lrt))
+calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FALSE,limma=FALSE){
+  if (limma){
+    fit = eBayes(in.fit)
+    fitContrast = eBayes(contrasts.fit(fit, inContrast))
+    result = topTable(fitContrast,number = 10000,sort.by = "p")
+    x = length(which(result$adj.P.Val<pcutoff))
+    return(list(numSig=x,fit=fitContrast))
+  }
+  else {
+    lrt = glmLRT(in.fit, contrast=inContrast)
+    result = topTags(lrt,n=10000)
+    x = length(which(result$table$FDR<pcutoff))
+    plotSmear(lrt,de.tags=rownames(result$table[which(result$table$FDR<pcutoff),]),main=plotTitle)
+    if (goseq) {runGoseq(lrt,pcutoff=pcutoff)}
+    return(list(numSig=x,lrt=lrt))
+  }
 }
 
 plotFCfractionalResults=function(inFC){
