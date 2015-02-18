@@ -1,0 +1,183 @@
+---
+title: "variance_analysis.Rmd"
+author: "Kristen Dang"
+date: "December 19, 2014"
+output: html_document
+---
+
+```{r message=FALSE,warning=FALSE}
+library('FactoMineR')
+library(corrgram)
+library('synapseClient')
+synapseLogin()
+
+source('~/Computing/sage-data-analysis/voom_fit.R')
+source('~/Computing/sage-data-analysis/scri_cran/cranio_common_routines.R')
+setwd('/Users/kristen/Computing/cranio/')
+cutoff = 0.01
+proteinCoding_transcripts = getByBiotype(biotype = 'protein_coding',gene = FALSE)
+proteinCoding_genes = getByBiotype(biotype = 'protein_coding',gene = TRUE)
+```
+
+
+Function to make PC datasets with different filters 
+```{r}
+
+generate_PCA_datasets=function(in.dge,pcNames,factoMine=FALSE,mc=1,TMM=TRUE){
+  
+  #### Make several filtered datasets ####
+
+  ## All data, PALO
+  if (TMM) { 
+    palo.dge = calcNormFactors(in.dge) 
+    palo.voom = voom_normalize(palo.dge)
+  }
+  else { 
+    palo.voom = voom_normalize(in.dge)
+    z = voom_fit(in.dge)
+  }
+
+  
+  ## PALX=5%
+  palx5.dge = filterByFractionPresent(in.dge,fraction=0.05,minCount=mc)
+  if (TMM) { palx5.dge = calcNormFactors(palx5.dge) }
+  palx5.voom = voom_normalize(palx5.dge)
+  z = voom_fit(palx5.dge)
+  
+  ## PALX=20%
+  palx20.dge = filterByFractionPresent(in.dge,fraction=0.20,minCount=mc)
+  if (TMM) {   palx20.dge = calcNormFactors(palx20.dge) }
+  palx20.voom = voom_normalize(palx20.dge)
+  z = voom_fit(palx20.dge)
+  
+  
+  ## Protein-coding genes, PALO
+  b = as.list(rownames(in.dge))
+  strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})  
+  pc.dge = in.dge[which(strippedNames %in% pcNames[,1]),]
+  pc_palo.dge = DGEList(counts = getCounts(pc.dge),group = pc.dge$samples$group)
+  if (TMM) { pc_palo.dge = calcNormFactors(pc_palo.dge) }
+  pc_palo.voom = voom_normalize(pc_palo.dge)
+  z = voom_fit(pc_palo.dge)
+
+  
+  ## Protein-coding genes, PALX=5%
+  pc_palx5.dge = filterByFractionPresent(pc_palo.dge,fraction=0.05,minCount=mc)
+  if (TMM) { pc_palx5.dge = calcNormFactors(pc_palx5.dge) }
+  pc_palx5.voom = voom_normalize(pc_palx5.dge)
+  z = voom_fit(pc_palx5.dge)
+
+  
+  ## Protein-coding genes, PALX=20%
+  pc_palx20.dge = filterByFractionPresent(pc_palo.dge,fraction=0.20,minCount=mc)
+  if (TMM) { pc_palx20.dge = calcNormFactors(pc_palx20.dge) }
+  pc_palx20.voom = voom_normalize(pc_palx20.dge)
+  z = voom_fit(pc_palx20.dge)
+  
+  
+  ### PCA via SVD on standardized,centered cpm expression values ####
+  if (factoMine) {
+    op = par(mfrow = c(2,3))
+    FM_PCA(palo.voom)
+    FM_PCA(palx5.voom)
+    FM_PCA(palx20.voom)
+    FM_PCA(pc_palo.voom)
+    FM_PCA(pc_palx5.voom)
+    FM_PCA(pc_palx20.voom)
+    par(op)  
+  }
+  
+  else {
+    op = par(mfrow = c(2,3))
+    prcomp_PCA(palo.voom)
+    prcomp_PCA(palx5.voom)
+    prcomp_PCA(palx20.voom)
+    prcomp_PCA(pc_palo.voom)
+    prcomp_PCA(pc_palx5.voom)
+    prcomp_PCA(pc_palx20.voom)
+    par(op)
+  }
+  return(pc_palo.dge)
+}
+```
+
+
+Results from multiple sailfish outputs
+```{r}
+align$sampNames = lookupRev$UDF.Investigator.Sample.Name[match(as.character(align$SAMPLE), lookupRev$Sample.Name)]
+head(align)
+metricsToSkip = c('READ_GROUP', 'RIBOSOMAL_BASES', 'SAMPLE', 'STRAND_SPECIFICITY', 'sampNames', 'PCT_RIBOSOMAL_BASES', 'LIBRARY')
+alignToCheck = align[,-which(colnames(align) %in% metricsToSkip)]
+
+op = par(mfrow = c(3,3))
+for (i in 1:ncol(alignToCheck)){ hist(alignToCheck[,i], main = colnames(alignToCheck)[i])}
+par(op)
+corrgram(alignToCheck,lower.panel = panel.pts,upper.panel = panel.pie)
+
+plotcols = c("orangered", "royalblue")
+
+pcaPlots=function(in.dge,pcNames,clin=correctedClinical,categ=categ,palx=0.20,mc=3,TMM=TRUE){
+  pc_palo.dge = generate_PCA_datasets(in.dge = in.dge, pcNames=pcNames,mc=mc,TMM=TMM)
+  pc_palx.dge = filterByFractionPresent(pc_palo.dge,fraction=palx,minCount=mc)
+  if (TMM) { pc_palx.dge = calcNormFactors(pc_palx.dge) }
+  pc_palx.pca = prcomp_PCA(in.voom = voom_normalize(pc_palx.dge))
+  # Factomine plot of samples
+  caseStatus = as.character(pc_palo.dge$samples$group)
+  caseStatus[which(clinicalDataR$Sample_Type == "Control")] = "control"
+  fm.pca = FM_PCA(in.voom = voom_normalize(pc_palx.dge))
+  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "none")
+  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "all",cex=0.8)
+  legend("topright",legend = c("case", "control"),col = plotcols,pch = 16)
+  calc_plot_PC_corr(in.pca = pc_palx.pca$x,inClinical=clin,categorical=categ)
+}
+
+
+#################
+## Gene counts ##
+plot(1, main = "gene counts")
+tmp = generateDataAndClinicalObj('syn2820309')
+data.dge = tmp$DGE
+clinicalDataR = tmp$VARS
+head(clinicalDataR)
+clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$Px_Code),]
+temp = clinicalDataR
+toConvert = c(8,9,12,13,14)
+for (i in toConvert){
+  temp[,i] = as.numeric(temp[,i])
+}
+temp[,c(5,10,15)] = log(temp[,c(5,10,15)])
+corrgram(temp,lower.panel = panel.pts,upper.panel = panel.pie)
+correctedClinical = temp
+
+clinAlignMerged = cbind(temp,align[match(temp$SeqSampleName, align$SAMPLE),-c(6,16,21,22,24,26)])
+head(clinAlignMerged)
+
+rm(temp)
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_genes,clin=clinAlignMerged[,5:ncol(clinAlignMerged)],categ=c(6,7,16,17)-4,palx=0.20,mc=3)
+
+
+#########
+## TPM ##
+# Using slighly different code, since this data is already TPM and doesn't need cpm transformation
+plot(1, main = "TPM")
+tmp = generateDataAndClinicalObj('syn3064954')
+data.dge = tmp$DGE
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4,palx=0.10,mc=1,TMM = FALSE)
+
+
+##################
+# Estimated reads
+plot(1, main = "estimated reads")
+tmp = generateDataAndClinicalObj('syn3064890')
+data.dge = tmp$DGE
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4,palx=0.20,mc=60)
+
+
+##################
+# Estimate Kmers
+plot(1, main = "estimated Kmers")
+tmp = generateDataAndClinicalObj('syn3098045')
+data.dge = tmp$DGE
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4)
+
+```
