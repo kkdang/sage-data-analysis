@@ -4,6 +4,7 @@
 
 library(biomaRt)
 library(limma)
+library(FactoMineR)
 #Hs = useMart("ensembl") # use this one normally
 Hs=useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org") # use this one when biomart.org is down
 Hs = useDataset("hsapiens_gene_ensembl", Hs)
@@ -182,4 +183,22 @@ plotSFfractionalResults=function(inSF){
   hist(inSF[,4], main = "distribution of mapped kmers", xlab = "fraction of mapped kmers (mappedRatio)")
   hist(inSF[,2], main = "distribution of mapped kmers", xlab = "number of mapped kmers")
   par(op)
+}
+
+FM_PCA=function(in.voom,plot=TRUE){
+  result.prc = PCA(X = t(in.voom),scale.unit = TRUE,ncp = 5,graph = FALSE)
+  if (plot){ barplot(result.prc$eig$"percentage of variance"[1:20], ylab = "% variance") } 
+  return(result.prc)
+}
+
+prcomp_PCA=function(in.voom,plot=TRUE){
+  prc = prcomp(t(in.voom),center=TRUE,scale=TRUE,retx = TRUE)
+  if (plot) { barplot((prc$sdev^2/sum(prc$sdev^2))[1:20], ylab = "fraction variance") } 
+  return(prc)
+}
+
+voom_normalize=function(in.dge,plot=TRUE){
+  voom_data = voom(in.dge,plot=plot)
+  tmp_fit = lmFit(voom_data,design=rep(1,ncol(voom_data)))
+  residuals(tmp_fit,y = voom_data)
 }
