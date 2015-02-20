@@ -12,8 +12,6 @@ library(RColorBrewer)
 library('rGithubClient')
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
-#setwd('/Users/kristen/Computing/cranio/')
-cutoff = 0.05
 
 # Alignment results
 alignEntity = synGet('syn2820392')
@@ -95,7 +93,7 @@ pcaCorrelationVal=function(x,y){cor.test(x,y)$estimate }
 pcaLM=function(x,y){summary(lm(x ~ y))$coefficients[2,4]}
 pcaLMEst=function(x,y){summary(lm(x ~ y))$coefficients[2,1]}
 
-calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR,categorical=c()){
+calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR,categorical=c(),k=15){
   # Using correlation against eigenvectors from all PALO data
   clinicalPCAcorrelations = matrix(NA, nrow = ncol(in.pca), ncol = ncol(inClinical))
   colnames(clinicalPCAcorrelations) = rep("default", ncol(clinicalPCAcorrelations))
@@ -139,8 +137,12 @@ calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR,categorical=c()){
   #apply(clinicalPCAcorrelations[1:20,],MARGIN=1,stripchart, las = 2)
   
   hist(clinicalPCAcorrelations)
-  greys=brewer.pal(6,"Greys")
+  reds=brewer.pal(7,"Reds")
   dataFiltered = clinicalPCAcorrelations
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
-  heatmap(1-dataFiltered[1:20,],Rowv = NA,Colv = NA,scale = "none",col=greys,margins = c(13,5))
+  heatmap(t(1-dataFiltered[1:k,]),Rowv = NA,Colv = NA,scale = "none",col=reds,margins = c(3,13))
+  rdbu=brewer.pal(8,"RdBu")
+  dataFiltered = clinicalPCAcorrelationEst
+  dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
+  heatmap(t(dataFiltered[1:k,1:(ncol(dataFiltered)-5)]),Rowv = NA,Colv = NA,scale = "none",col=rdbu,margins = c(3,13))
 }
