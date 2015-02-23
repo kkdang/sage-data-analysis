@@ -1,0 +1,71 @@
+---
+title: "sample_outlier_analysis.Rmd"
+author: "Kristen Dang"
+date: "February 23, 2015"
+output: html_document
+---
+
+
+```{r}
+# Alignment results
+alignEntity = synGet('syn2820392')
+align = read.csv(getFileLocation(alignEntity))
+colnames(align)
+lookupEnt = synGet("syn2770057") # Fix the sample names of the estimated read count data
+lookup = read.csv(getFileLocation(lookupEnt))
+align$sampNames = lookupRev$UDF.Investigator.Sample.Name[match(as.character(align$SAMPLE), lookupRev$Sample.Name)]
+head(align)
+
+
+metricsToSkip = c('READ_GROUP', 'RIBOSOMAL_BASES', 'SAMPLE', 'STRAND_SPECIFICITY', 'sampNames', 'PCT_RIBOSOMAL_BASES', 'LIBRARY')
+alignToCheck = align[,-which(colnames(align) %in% metricsToSkip)]
+
+outlierEnt = synGet('syn3241017')
+outlier_samples = read.delim(getFileLocation(outlierEnt),header = FALSE)
+
+outlierIndicies = which(align$sampNames %in% t(outlier_samples))
+runT=function(x){t.test(x[outlierIndicies],y = x[-outlierIndicies],paired = FALSE)$p.value}
+
+alignT = apply(alignToCheck,MARGIN = 2,function(x){t.test(x[outlierIndicies],y = x[-outlierIndicies],paired = FALSE)$p.value})
+hist(alignT)
+which(alignT < 0.01)
+
+
+par(mfrow = c(3,3))
+plot(density(alignToCheck$PCT_CODING_BASES[outlierIndicies]),xlim = range(0.45,0.65),ylim = range(0,35), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$PCT_CODING_BASES[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$PCT_CORRECT_STRAND_READS[outlierIndicies]),xlim = range(0.997,1.0),ylim = range(0,3500), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$PCT_CORRECT_STRAND_READS[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$PCT_INTERGENIC_BASES[outlierIndicies]),xlim = range(0.06,0.087),ylim = range(0,120), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$PCT_INTERGENIC_BASES[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$PCT_INTRONIC_BASES[outlierIndicies]),xlim = range(0.06,0.082),ylim = range(0,80), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$PCT_INTRONIC_BASES[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$PCT_MRNA_BASES[outlierIndicies]),xlim = range(0.8,0.9),ylim = range(0,60), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$PCT_MRNA_BASES[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$PCT_UTR_BASES[outlierIndicies]),xlim = range(0.25,0.35),ylim = range(0,45), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$PCT_UTR_BASES[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$INCORRECT_STRAND_READS[outlierIndicies]),xlim = range(50000,150000),ylim = range(0,3.0e-05), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$INCORRECT_STRAND_READS[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$MEDIAN_5PRIME_TO_3PRIME_BIAS[outlierIndicies]),xlim = range(0.4,0.7),ylim = range(0,8), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$MEDIAN_5PRIME_TO_3PRIME_BIAS[-outlierIndicies]),lwd = 2)
+
+
+plot(density(alignToCheck$MEDIAN_CV_COVERAGE[outlierIndicies]),xlim = range(0.45,0.55),ylim = range(0,70), col = "palevioletred", lwd = 2)
+lines(density(alignToCheck$MEDIAN_CV_COVERAGE[-outlierIndicies]),lwd = 2)
+
+```
+
