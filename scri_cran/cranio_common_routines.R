@@ -13,35 +13,13 @@ library('rGithubClient')
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 
-# Alignment results
-alignEntity = synGet('syn2820392')
-align = read.csv(getFileLocation(alignEntity))
-colnames(align)
 
+metadataEnt = synGet('syn3241418')
+metadata = read.delim(getFileLocation(metadataEnt),header = TRUE)
 
-#Sample-level expression values
-# Fix the sample names of the estimated read count data
-lookupEnt = synGet("syn2770057")
-lookup = read.csv(getFileLocation(lookupEnt))
-clinicalTable = synTableQuery('SELECT * FROM syn2823605')
-clinicalData = clinicalTable@values
-
-colnames(clinicalData) = sapply(strsplit(colnames(clinicalData),split = " "), function(x){paste(x,sep = "",collapse="_")})
-colnames(clinicalData) = sapply(strsplit(colnames(clinicalData),split = "[()]"), function(x){paste(x,sep = "",collapse="")})
-
-
-noMatch = which(is.na(match(lookup$UDF.Investigator.Sample.Name, clinicalData$Px_Code)))
-lookup[noMatch,]
-
-lookupRev = lookup
-lookupRev$UDF.Investigator.Sample.Name = as.character(lookup$UDF.Investigator.Sample.Name)
-lookupRev$UDF.Investigator.Sample.Name = replace(x=lookupRev$UDF.Investigator.Sample.Name, list=noMatch, values=c("1071", "1059", "1075"))
-noMatch2 = which(is.na(match(lookupRev$UDF.Investigator.Sample.Name, clinicalData$"Px Code")))
-rm(noMatch, noMatch2, lookup)
-
-
-#Clinical and experimental data
-controlSampleIDs = clinicalTable@values$SeqSampleName[which(clinicalTable@values$"Sample Type" == "Control")]
+###############
+# Functions
+###############
 
 fixdate=function(inSplitDate){
   if (as.numeric(inSplitDate[3]) < 15) {inSplitDate[3] = paste("20", inSplitDate[3], sep = "")}
@@ -87,6 +65,19 @@ generateDataAndClinicalObj=function(synId){
   return(list(DGE=data.dge, VARS=clinicalDataR))
 }
 
+
+#Function to generate data object
+generateDataObj=function(synId){
+  dataEntity = synGet(synId) 
+  library('R.utils')
+  gunzip(getFileLocation(dataEntity),overwrite=TRUE)
+  x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
+  detach("package:R.utils", unload=TRUE)
+  estReads = read.csv(x, row.names = 1)
+  colnames(estReads) = lookupRev$UDF.Investigator.Sample.Name[match(colnames(estReads), paste("X", lookupRev$Sample.Name,sep = ""))]
+  data.dge = DGEList(counts=estReads,remove.zeros=TRUE)
+  return(data.dge)
+}
 
 pcaCorrelation=function(x,y){cor.test(x,y)$p.value }
 pcaCorrelationVal=function(x,y){cor.test(x,y)$estimate }
@@ -146,3 +137,6 @@ calc_plot_PC_corr=function(in.pca,inClinical=clinicalDataR,categorical=c(),k=15)
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
   heatmap(t(dataFiltered[1:k,1:(ncol(dataFiltered)-5)]),Rowv = NA,Colv = NA,scale = "none",col=rdbu,margins = c(3,13))
 }
+
+
+
