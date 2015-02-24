@@ -74,7 +74,7 @@ generateDataObj=function(synId){
   x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
   detach("package:R.utils", unload=TRUE)
   estReads = read.csv(x, row.names = 1)
-  colnames(estReads) = lookupRev$UDF.Investigator.Sample.Name[match(colnames(estReads), paste("X", lookupRev$Sample.Name,sep = ""))]
+  colnames(estReads) = metadataFiltered$Px_Code[match(colnames(estReads), paste("X", metadataFiltered$SAMPLE,sep = ""))]
   data.dge = DGEList(counts=estReads,remove.zeros=TRUE)
   return(data.dge)
 }
