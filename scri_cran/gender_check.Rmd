@@ -1,0 +1,50 @@
+---
+title: "gender_check.Rmd"
+author: "Kristen Dang"
+date: "March 2, 2015"
+output: html_document
+---
+
+```{r message=FALSE,warning=FALSE}
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
+```
+
+
+
+```{r}
+Ygenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="Y", mart=Hs)
+
+toFilter = c('File', 'Biomarker_ID', 'Time_Trial', 'LIBRARY', 'PCT_RIBOSOMAL_BASES','READ_GROUP','RIBOSOMAL_BASES','STRAND_SPECIFICITY','SeqSampleName')
+metadataFiltered = metadata[,-which(colnames(metadata)%in%toFilter)]
+head(metadataFiltered)
+
+palo.dge = generateDataObj('syn2820309')
+metadataFiltered = metadataFiltered[match(colnames(palo.dge),metadataFiltered$Px_Code),]
+
+
+YgeneCounts = palo.dge[which(rownames(palo.dge) %in% Ygenes[,1]),]
+YgeneFraction = colSums(getCounts(YgeneCounts))/YgeneCounts$samples$lib.size
+hist(YgeneFraction, main = "fraction of counts from chrY genes")
+
+predictedMales = names(which(YgeneFraction > 1e-4))
+reportedMales = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "M")])
+print("What samples are reported Males but not accourding to chrY counts?")
+setdiff(reportedMales, predictedMales)
+changeMtoF = setdiff(reportedMales, predictedMales)
+
+predictedFemales = setdiff(colnames(palo.dge), predictedMales)
+reportedFemailes = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "F")])
+print("What samples are predicted Famale according to chrY counts but reported Male?")
+setdiff(predictedFemales, reportedFemailes)
+
+```
+
+
+Correct the metadata file
+```{r}
+temp = read.delim(getFileLocation(metadataEnt),header = TRUE)
+temp$Sex[which(temp$Px_Code %in% changeMtoF)] = as.factor("F")
+write.table(temp,file=getFileLocation(metadataEnt),append = FALSE,quote = FALSE,sep = "\t",row.names = FALSE)
+metadataEnt = synStore(metadataEnt)
