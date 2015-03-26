@@ -2,3 +2,7 @@
 *.html
 # ignore markdown
 *.md
+# ignore Figures dir
+figure/*
+# ignore Rhistory
+*.Rhistory
