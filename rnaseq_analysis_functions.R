@@ -197,7 +197,7 @@ prcomp_PCA=function(in.voom,plot=TRUE){
   return(prc)
 }
 
-voom_normalize=function(in.dge,plot=TRUE){
+voom_on_mean=function(in.dge,plot=TRUE){
   voom_data = voom(in.dge,plot=plot)
   tmp_fit = lmFit(voom_data,design=rep(1,ncol(voom_data)))
   residuals(tmp_fit,y = voom_data)
