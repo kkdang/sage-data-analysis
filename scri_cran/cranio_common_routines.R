@@ -13,7 +13,6 @@ library('rGithubClient')
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 
-
 metadataEnt = synGet('syn3241418')
 metadata = read.delim(getFileLocation(metadataEnt),header = TRUE)
 
@@ -102,12 +101,12 @@ calc_plot_PC_corr=function(in.pca,inClinical,categorical=c(),k=15){
   abline(v=0.05, lty = 2)
   abline(v = 0.01, lty = 3)
   
-  hist(clinicalPCAcorrelations)
+#  hist(clinicalPCAcorrelations)
   reds=brewer.pal(7,"Reds")
   dataFiltered = clinicalPCAcorrelations
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
   heatmap(t(1-dataFiltered[1:k,]),Rowv = NA,Colv = NA,scale = "none",col=reds,margins = c(3,13))
-  heatmap(t(-log10(dataFiltered[1:k,])),Rowv = NA,Colv = NA,scale = "none",col=reds,margins = c(3,13))
+#  heatmap(t(-log10(dataFiltered[1:k,])),Rowv = NA,Colv = NA,scale = "none",col=reds,margins = c(3,13))
   rdbu=brewer.pal(8,"RdBu")
   dataFiltered = clinicalPCAcorrelationEst
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
