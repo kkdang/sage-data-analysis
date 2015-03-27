@@ -111,6 +111,10 @@ calc_plot_PC_corr=function(in.pca,inClinical,categorical=c(),k=15){
   dataFiltered = clinicalPCAcorrelationEst
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
   heatmap(t(dataFiltered[1:k,1:(ncol(dataFiltered)-5)]),Rowv = NA,Colv = NA,scale = "none",col=rdbu,margins = c(3,13))
+
+  dataFiltered = clinicalPCAcorrelations
+  dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
+  return(dataFiltered)
 }
 
 
