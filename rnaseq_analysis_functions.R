@@ -8,6 +8,7 @@ library(FactoMineR)
 #Hs = useMart("ensembl") # use this one normally
 Hs=useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org") # use this one when biomart.org is down
 Hs = useDataset("hsapiens_gene_ensembl", Hs)
+geneNames = getBM(attributes=c("ensembl_gene_id","hgnc_symbol"),mart=Hs)    
 
 
 getByBiotype=function(biotype="protein_coding", gene=TRUE){
@@ -16,6 +17,14 @@ getByBiotype=function(biotype="protein_coding", gene=TRUE){
   }
   else {
    return(getBM(attributes=c("ensembl_transcript_id"),filters="transcript_biotype",values=biotype, mart=Hs))
+  }
+}
+
+getHGNC=function(inENSG,gene=TRUE){
+  if (gene==TRUE){
+    return(geneNames[match(inENSG,geneNames[,1]),])    
+  }
+  else { # write this condition
   }
 }
 
@@ -144,13 +153,20 @@ runGoseq=function(lrt,pcutoff=0.05){
   }
 }
 
-calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FALSE,limma=FALSE){
+calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FALSE,limma=FALSE,inCoef){
   if (limma){
     fit = eBayes(in.fit)
-    fitContrast = eBayes(contrasts.fit(fit, inContrast))
-    result = topTable(fitContrast,number = 10000,sort.by = "p")
-    x = length(which(result$adj.P.Val<pcutoff))
-    return(list(numSig=x,fit=fitContrast))
+    if (inContrast) {
+      fitContrast = eBayes(contrasts.fit(fit, inContrast))
+      result = topTable(fitContrast,number = 10000,sort.by = "p")
+      x = length(which(result$adj.P.Val<pcutoff))
+      return(list(numSig=x,fit=fitContrast))
+    }
+    else { 
+      result = topTable(fit=fit,coef=inCoef,number = 10000,sort.by = "p")   
+      x = length(which(result$adj.P.Val<pcutoff))
+      return(list(numSig=x,fit=fit))
+    }
   }
   else {
     lrt = glmLRT(in.fit, contrast=inContrast)
