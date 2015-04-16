@@ -2,27 +2,34 @@
 title: "covariate_analysis_peer"
 author: "Kristen Dang"
 date: "January 29, 2015"
-output: html_document
+output:
+  html_document:
+    fig_height: 9
+    fig_width: 6
 ---
 
 ```{r}
-install.packages(pkgs = c("lubridate"),repos="http://cran.us.r-project.org", dependencies=TRUE)
-install.packages(pkgs = c("FactoMineR"),repos="http://cran.us.r-project.org", dependencies=TRUE)
-install.packages("devtools")
-require(devtools)
-install_github("brian-bot/rGithubClient")
-source('http://depot.sagebase.org/CRAN.R')
-pkgInstall(c("synapseClient"))
+# install.packages(pkgs = c("lubridate"),repos="http://cran.us.r-project.org", dependencies=TRUE)
+# install.packages(pkgs = c("FactoMineR"),repos="http://cran.us.r-project.org", dependencies=TRUE)
+# install.packages("corrgram")
+# install.packages("devtools")
+# require(devtools)
+# install_github('brian-bot/rGithubClient', ref='dev')
+# source('http://depot.sagebase.org/CRAN.R')
+# pkgInstall(c("synapseClient"))
+
 ```
 
 ```{r message=FALSE,warning=FALSE}
 library(peer)
+library(corrgram)
 library('rGithubClient')
+token = read.delim('rGHclient_token.txt',header = FALSE)
+setGithubToken(as.character(token[1,1]))
 
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
 proteinCoding_genes = getByBiotype()
-proteinCoding_transcripts = getByBiotype(gene = FALSE)
 ```
 
 
@@ -60,32 +67,39 @@ runPEER=function(inData,k_hidden=10,estMean=TRUE,covariates=NULL){
 ```
 
 
-Get metadata and merge into one object
+Filter and convert metadata
 ```{r}
-## All data, PALO
-tmp = generateDataAndClinicalObj('syn2820309')
-palo.dge = tmp$DGE
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+```
 
 
-clinicalDataR = tmp$VARS
-clinicalDataR = clinicalDataR[match(colnames(palo.dge),clinicalDataR$Px_Code),]
-caseStatus = rep("case", nrow(clinicalDataR))
-caseStatus[which(clinicalDataR$Sample_Type == "Control")] = "control"
-clinicalDataR$caseStatus = caseStatus
+Get PALX20 protein-coding dataset with outliers removed
+```{r warning=FALSE, message=FALSE}
+data.dge = generateDataObj('syn2820309')
 
-temp = clinicalDataR
-toConvert = c(8,9,12,13,14)
-for (i in toConvert){
-  temp[,i] = as.numeric(temp[,i])
-}
-temp[,c(5,10,15)] = log(temp[,c(5,10,15)])
+outlierTable = synTableQuery('SELECT * FROM syn3354503')
+outlierData = outlierTable@values
+noOutliers.dge = data.dge[,-which(colnames(data.dge) %in% outlierData$minimalSet)]
 
-tmpMerged = cbind(temp,align[match(temp$SeqSampleName, align$SAMPLE),])
-head(tmpMerged)
+## Remove samples that don't have seq data.
+## Order the data in the same way for counts and metadata
+metadataMatching = metadataFiltered[-which(!metadataFiltered$Px_Code %in% colnames(noOutliers.dge)),]
+metadataMatching = metadataMatching[match(colnames(noOutliers.dge), metadataMatching$Px_Code),]
+head(metadataMatching$Px_Code)
+head(colnames(noOutliers.dge))
 
-toFilter = c('File', 'Biomarker_ID', 'Time_Trial', 'LIBRARY', 'PCT_RIBOSOMAL_BASES','READ_GROUP','RIBOSOMAL_BASES','STRAND_SPECIFICITY','SeqSampleName')
-clinAlignMerged = tmpMerged[,-which(colnames(tmpMerged)%in%toFilter)]
-head(clinAlignMerged)
+## Protein-coding genes, PALX=20%
+b = as.list(rownames(noOutliers.dge))
+strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})  
+pc.dge = noOutliers.dge[which(strippedNames %in% proteinCoding_genes[,1]),]
+pc_palo.dge = DGEList(counts = getCounts(pc.dge),group = pc.dge$samples$group)
+pc_palx20.dge = filterByFractionPresent(pc_palo.dge,fraction=0.20,minCount=3)
+pc_palx20.dge = calcNormFactors(pc_palx20.dge)
+pc_palx20_data = voom(pc_palx20.dge, plot=FALSE)
+tmp_fit = lmFit(pc_palx20_data,design=rep(1,ncol(pc_palx20_data)))
+pc_palx20_res = residuals(tmp_fit,y = pc_palx20_data)
+boxplot(pc_palx20_res,outline = FALSE,las=2)
 
 ```
 
@@ -95,99 +109,61 @@ PEER results and correlate factors with metadata
 ```{r}
 ### Model specification 
 
-#Known covariates
-fullDesign = model.matrix(~0+Age_mos.+Sex+Sample_Type+Initial_date_set_up+Initial_growth_duration_days+for_RNA_date_set_up+RNA_days_to_harvest+Sample_Origin+MEDIAN_3PRIME_BIAS+MEDIAN_5PRIME_BIAS+MEDIAN_CV_COVERAGE+PCT_MRNA_BASES+PCT_USABLE_BASES+PCT_UTR_BASES+CODING_BASES,data = clinAlignMerged)
+# Full model
+fullDesign = model.matrix(~0+PCT_CORRECT_STRAND_READS+Age_mos.+Sex+PCT_INTRONIC_BASES,data = metadataMatching)
 
-#known covariates - ones similar to PCT INTRONIC excluded
-noPCTDesign = model.matrix(~0+Age_mos.+Sex+Sample_Type+Initial_date_set_up+Initial_growth_duration_days+for_RNA_date_set_up+RNA_days_to_harvest+Sample_Origin+MEDIAN_3PRIME_BIAS+MEDIAN_5PRIME_BIAS+MEDIAN_CV_COVERAGE+CODING_BASES,data = clinAlignMerged)
+# Full model + LN2
+fullDesign_pLN2= model.matrix(~0+Days_in_LN2+PCT_CORRECT_STRAND_READS+Age_mos.+Sex+PCT_INTRONIC_BASES,data = metadataMatching)
 
+categFactors = c('Sex')
+metaCategorical = c("Sex", "Sample_Type", "Initial_date_set_up", "Initial_date_freeze", "for_RNA_date_set_up", "for_RNA_date_plated", "for_RNA_date_harvest", "ScanDate", "Sample_Origin", "caseStatus", "SAMPLE","libraryBatch" )
 
-# case control design only
-ccDesign = model.matrix(~0+caseStatus,data = clinAlignMerged)
-
-
-prepareData=function(in.dge,palx=0.2,mc=3){
-  palx.dge = filterByFractionPresent(in.dge,fraction = palx,minCount = mc)
-  temp = palx.dge[which(rownames(palx.dge) %in% proteinCoding_genes[,1]),]
-  pc_palx.dge = DGEList(counts = getCounts(temp),group = temp$samples$group,remove.zeros = TRUE)
-  pc_palx.dge = calcNormFactors(pc_palx.dge)
-  pc_palx_data = voom(pc_palx.dge,plot=TRUE)
-  tmp_fit = lmFit(pc_palx_data,design=rep(1,ncol(pc_palx_data)))
-  pc_palx_res = residuals(tmp_fit,y = pc_palx_data)
-  boxplot(pc_palx_res,outline = FALSE,las=2)
-  return(pc_palx_res)
-}
-
-pc_palx20.res = prepareData(palo.dge,palx = 0.2,mc = 3)
-categFactors = c('Sex', 'Sample_Type', 'Sample_Origin', 'caseStatus','ScanDate' )
+cutoff = 0.05
 ```
 
-Just case -control factors
-```{r fig.width=8, fig.height=8}
-k=10
-pc_palx20_cc.peer = runPEER(pc_palx20.res,covariates=ccDesign,estMean = FALSE,k_hidden = k)
-plot(PEER_getAlpha(pc_palx20_cc.peer),type = "o",ylab = "precision (inverse variance of weights)", xlab = "hidden factors")
-#save(pc_palx20.peer,file = "pc_palx20.peer.Robj.bz2",compress = "bzip2")
-factors = PEER_getX(pc_palx20_cc.peer)
-calc_plot_PC_corr(in.pca = factors[,3:12],inClinical=clinAlignMerged[,2:ncol(clinAlignMerged)],categorical = which(colnames(clinAlignMerged) %in% categFactors)-1,k = k)
-weights = PEER_getW(pc_palx20_cc.peer)
-boxplot(weights[,3:12], main = "case-control design, no mean", ylab = "weights")
-```
+
 
 Full design matrix, no mean
 ```{r fig.width=8, fig.height=8}
-k = 15
-pc_palx20_allcov.peer = runPEER(pc_palx20.res,covariates = fullDesign,estMean = FALSE,k_hidden = k)
-plot(PEER_getAlpha(pc_palx20_allcov.peer)[26:(25+k)],type = "o",ylab = "inverse variance of weights (precision)", xlab = "hidden factors")
+k = 25
+numFactors = 5
+pc_palx20_allcov.peer = runPEER(pc_palx20_res,covariates = fullDesign,estMean = FALSE,k_hidden = k)
+plot(PEER_getAlpha(pc_palx20_allcov.peer)[(numFactors+1):(numFactors+k)],type = "o",ylab = "inverse variance of weights (precision)", xlab = "hidden factors")
 factors = PEER_getX(pc_palx20_allcov.peer)
-calc_plot_PC_corr(in.pca = factors[,26:(25+k)],inClinical=clinAlignMerged[,2:ncol(clinAlignMerged)],categorical = which(colnames(clinAlignMerged) %in% categFactors)-1,k = k)
+temp = calc_plot_PC_corr(in.pca = factors[,(numFactors+1):(numFactors+k)],inClinical=metadataMatching[,c(2:ncol(metadataMatching))],categorical = which(colnames(metadataMatching) %in% metaCategorical)-1,k = k)
 weights = PEER_getW(pc_palx20_allcov.peer)
-boxplot(weights[,26:(25+k)], main = "full design, no mean", ylab = "weights")
+boxplot(weights[,(numFactors+1):(numFactors+k)], main = "full design, no mean", ylab = "weights")
 ```
 
-No known factors, no mean
+
+
+Full design matrix, +LN2, no mean
 ```{r fig.width=8, fig.height=8}
-k = 15
-pc_palx20_nocov.peer = runPEER(pc_palx20.res,estMean = FALSE,k_hidden = k)
-plot(PEER_getAlpha(pc_palx20_nocov.peer),type = "o",ylab = "inverse variance of weights", xlab = "hidden factors")
-factors = PEER_getX(pc_palx20_nocov.peer)
-calc_plot_PC_corr(in.pca = factors,inClinical=clinAlignMerged[,2:ncol(clinAlignMerged)],categorical = which(colnames(clinAlignMerged) %in% categFactors)-1,k = k)
-weights = PEER_getW(pc_palx20_nocov.peer)
-boxplot(weights, main = "no factors, no mean", ylab = "weights")
+k = 25
+numFactors = 6
+pc_palx20_allpLN2.peer = runPEER(pc_palx20_res,covariates = fullDesign_pLN2,estMean = FALSE,k_hidden = k)
+plot(PEER_getAlpha(pc_palx20_allpLN2.peer)[(numFactors+1):(numFactors+k)],type = "o",ylab = "inverse variance of weights (precision)", xlab = "hidden factors")
+factors = PEER_getX(pc_palx20_allpLN2.peer)
+temp = calc_plot_PC_corr(in.pca = factors[,(numFactors+1):(numFactors+k)],inClinical=metadataMatching[,c(2:ncol(metadataMatching))],categorical = which(colnames(metadataMatching) %in% metaCategorical)-1,k = k)
+weights = PEER_getW(pc_palx20_allpLN2.peer)
+boxplot(weights[,(numFactors+1):(numFactors+k)], main = "full design, no mean", ylab = "weights")
 ```
 
-Known factors, no PCT, no mean
-```{r fig.width=8, fig.height=8}
-k = 15
-pc_palx20_noPCTcov.peer = runPEER(pc_palx20.res,covariates = noPCTDesign, estMean = FALSE,k_hidden = k)
-plot(PEER_getAlpha(pc_palx20_noPCTcov.peer)[23:(22+k)],type = "o",ylab = "precision (inverse variance of weights)", xlab = "hidden factors")
-factors = PEER_getX(pc_palx20_noPCTcov.peer)
-calc_plot_PC_corr(in.pca = factors[,23:(22+k)],inClinical=clinAlignMerged[,2:ncol(clinAlignMerged)],categorical = which(colnames(clinAlignMerged) %in% categFactors)-1,k = k)
-weights = PEER_getW(pc_palx20_noPCTcov.peer)
-boxplot(weights[,23:(22+k)], main = "no factors, no PCT, no mean", ylab = "weights")
-```
 
-Known factors, no PCT, 
-```{r fig.width=8, fig.height=8}
-k = 15
-pc_palx20_noPCTcov_wmean.peer = runPEER(pc_palx20.res,covariates = noPCTDesign, k_hidden = k)
-plot(PEER_getAlpha(pc_palx20_noPCTcov_wmean.peer)[24:(23+k)],type = "o",ylab = "precision (inverse variance of weights)", xlab = "hidden factors")
-factors = PEER_getX(pc_palx20_noPCTcov_wmean.peer)
-calc_plot_PC_corr(in.pca = factors[,24:(23+k)],inClinical=clinAlignMerged[,2:ncol(clinAlignMerged)],categorical = which(colnames(clinAlignMerged) %in% categFactors)-1,k = k)
-weights = PEER_getW(pc_palx20_noPCTcov_wmean.peer)
-boxplot(weights[,24:(23+k)], main = "no factors, no PCT", ylab = "weights")
-```
 
 
 Permuted dataset
 ```{r}
+# Permutes sample order for each gene, breaking coexpression relationships between genes and breaking relationship between samples and metadata.
 permute=function(inData){
   l = length(inData)
   x = sample(l,l, replace = FALSE)
   return(inData[x])
 }
+
 shuffle=function(inData,col=TRUE){
   if (col) { 
+    # Suffles sample column order, breaking relationship with metadata. Gene relationships remain.
     s = sample(ncol(inData),ncol(inData),replace=FALSE)
     return(inData[,s])
   }
@@ -197,9 +173,53 @@ shuffle=function(inData,col=TRUE){
   }
 }
 
-pc_palx20.permute = t(apply(pc_palx20.res,MARGIN = 1,permute))
-pc_palx20.permute = shuffle(pc_palx20.res)
+# Profile single permute
+pc_palx20.permute = t(apply(pc_palx20_res,MARGIN = 1,permute))
+k = 15
+numFactors = 5
+pc_palx20_permute.peer = runPEER(pc_palx20.permute,covariates = fullDesign,estMean = FALSE,k_hidden = k)
+plot(PEER_getAlpha(pc_palx20_permute.peer)[(numFactors+1):(numFactors+k)],type = "o",ylab = "inverse variance of weights (precision)", xlab = "hidden factors")
+factors = PEER_getX(pc_palx20_permute.peer)
+temp = calc_plot_PC_corr(in.pca = factors[,(numFactors+1):(numFactors+k)],inClinical=metadataMatching[,c(2:ncol(metadataMatching))],categorical = which(colnames(metadataMatching) %in% metaCategorical)-1,k = k)
+weights = PEER_getW(pc_palx20_permute.peer)
+boxplot(weights[,(numFactors+1):(numFactors+k)], main = "full design, no mean", ylab = "weights")
+
+
+# profile single shuffle
+pc_palx20.shuffle = shuffle(pc_palx20_res)
+k = 15
+numFactors = 5
+pc_palx20_shuffle.peer = runPEER(pc_palx20.shuffle,covariates = fullDesign,estMean = FALSE,k_hidden = k)
+plot(PEER_getAlpha(pc_palx20_shuffle.peer)[(numFactors+1):(numFactors+k)],type = "o",ylab = "inverse variance of weights (precision)", xlab = "hidden factors")
+factors = PEER_getX(pc_palx20_shuffle.peer)
+temp = calc_plot_PC_corr(in.pca = factors[,(numFactors+1):(numFactors+k)],inClinical=metadataMatching[,c(2:ncol(metadataMatching))],categorical = which(colnames(metadataMatching) %in% metaCategorical)-1,k = k)
+weights = PEER_getW(pc_palx20_shuffle.peer)
+boxplot(weights[,(numFactors+1):(numFactors+k)], main = "full design, no mean", ylab = "weights")
 ```
+
+
+Compare several random permutes to actual
+```{r}
+# k = 25
+# numFactors = 5
+# iterations = 100
+# collectedPrecision = matrix(NA,nrow = k+numFactors,ncol=iterations)
+# for (i in 1:iterations){
+#   pc_palx20.permute = t(apply(pc_palx20_res,MARGIN = 1,permute))
+#   pc_palx20_permute.peer = runPEER(pc_palx20.permute,covariates = fullDesign,estMean = FALSE,k_hidden = k)
+#   collectedPrecision[,i] = PEER_getAlpha(pc_palx20_permute.peer)
+# }
+# 
+# plot(collectedPrecision[(numFactors+1):(numFactors+k),1], type = "l", ylim = range(0,12), ylab = "precision", main = "permuted datasets vs actual", xlab = "factors")
+# for (i in 2:14){
+#   lines(collectedPrecision[(numFactors+1):(numFactors+k),i], type = "l")
+# }
+# lines(PEER_getAlpha(pc_palx20_allcov.peer)[(numFactors+1):(numFactors+k)],type = "o",ylab = "inverse variance of weights (precision)", xlab = "hidden factors", col = "orange")
+```
+
+
+
+
 
 ```{r}
 # posterior mean of the inferred confounders (NxK matrix)
@@ -229,4 +249,7 @@ loadToSynapse=function(inPEER,modelName){
   residEntity = synStore(residEntity)
 
 }
+
+#loadToSynapse(pc_palx20_allcov.peer,'fullModel_nomean')
+#loadToSynapse(pc_palx20_allpLN2.peer,'fullModel_pLN2_nomean')
 ```
