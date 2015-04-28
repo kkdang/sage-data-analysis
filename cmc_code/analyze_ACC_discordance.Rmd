@@ -1,0 +1,134 @@
+---
+title: "analyze_ACC_discordance.Rmd"
+author: "Kristen Dang"
+date: "April 23, 2015"
+output: html_document
+---
+
+```{r message=FALSE, echo=FALSE}
+library(synapseClient)
+synapseLogin()
+```
+
+## RNA-DNA discordance
+```{r}
+discordFile = synGet('syn3775514',downloadFile = TRUE)
+discord_total = read.delim(getFileLocation(discordFile), header = TRUE)
+discord_matrix = data.matrix(discord_total)
+hist(discord_matrix, col = "honeydew", main = "raw discordance")
+
+```
+
+
+```{r}
+sitesFile = synGet('syn3775524',downloadFile = TRUE)
+sites = read.delim(getFileLocation(sitesFile), header = TRUE)
+sites_matrix = data.matrix(sites)
+dim(sites_matrix)
+hist(sites_matrix, col = "honeydew", main = "number of sites used to calculate")
+hist(sites_matrix, col = "honeydew", main = "number of sites used to calculate (zoom)", ylim = range(0,1000),breaks = 40)
+```
+
+
+### Making fractional discordance dataset
+```{r}
+metaFile = synGet("syn2299154")
+metadata = read.csv(getFileLocation(metaFile))
+
+genoIDs = metadata$DNA_report..Genotyping.Sample_ID[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)]
+
+
+filtered_discord = discord_matrix[match(toupper(genoIDs), toupper(rownames(discord_matrix))),]
+dim(filtered_discord)
+filtered_sites = sites_matrix[match(toupper(genoIDs), toupper(rownames(sites_matrix))),]
+dim(filtered_sites)
+
+fractional_discord = filtered_discord / filtered_sites
+hist(fractional_discord, col = "honeydew", main = "fractional discordance")
+hist(fractional_discord, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,200), main = "discordance -- lower tail ")
+```
+
+
+### Self matches
+```{r}
+selfMatches = diag(fractional_discord)
+names(selfMatches) = colnames(fractional_discord)
+# How many are NA?
+length(which(is.na(selfMatches)))
+which(is.na(selfMatches))
+# what are they supposed to match?
+rownames(fractional_discord)[which(is.na(selfMatches))]
+
+# Why are they NA?
+# Which ones don't have a match between discord results and ACC RNA id? n = 4. These are truly absent from metadata file. Why? ***
+colnames(discord_matrix)[which(is.na(match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)))]
+# Two others are excluded from genotyping because of missingness rate.
+metadata$DNA_report..Exclude.Reason[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)[which(is.na(genoIDs))]]
+# The rest (n = 5) match data in the metadata file, but don't have genotyping for some other reason ("FAKE" ??)
+setdiff(genoIDs, rownames(fractional_discord))
+
+
+hist(selfMatches, col = "honeydew", xlab = "self discordance")
+hist(selfMatches, col = "honeydew", xlim = range(0,0.5), breaks = 40, ylim = range(0,150), main = "selfMatches -- low range")
+hist(selfMatches, col = "honeydew", xlim = range(0.5,1), breaks = 40, ylim = range(0,20), main = "selfMatches -- high range")
+# Investigating ones that don't match self
+# Which RNA samples don't match self genotype
+which(selfMatches > 0.5)
+# Which self genotype ID are they supposed to match?
+rownames(fractional_discord)[which(selfMatches > 00.5)]
+
+# Samples with a high self-discord, but not as high as non-self values
+intersect(names(which(selfMatches > 0.1)), names(which(selfMatches < 0.5)))
+```
+
+
+
+### Non-self matches
+```{r}
+nonSelfMatches = fractional_discord - diag(x=selfMatches)
+hist(nonSelfMatches, col = "honeydew", xlab = "fractional discordance")
+hist(nonSelfMatches, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,100), main = "nonself discord -- low range")
+hist(nonSelfMatches, col = "honeydew", xlim = range(0.03,0.5), breaks = 200, ylim = range(0,20))
+num_low_discord = apply(nonSelfMatches,MARGIN = 2,function(x){length(which(x < 0.4))})
+which(num_low_discord > 1)
+suspectCols = which(num_low_discord > 1)
+
+for (i in 1:length(suspectCols)){
+  print(colnames(nonSelfMatches)[suspectCols[i]])
+  print(paste('non-self matches:', intersect(names(which(nonSelfMatches[,suspectCols[i]] < 0.4)), names(which(nonSelfMatches[,suspectCols[i]] > 0))), sep = ' '))  
+}
+
+```
+
+
+## RNA-RNA discordance
+```{r}
+allDiscordFile = synGet('syn3775542',downloadFile = TRUE)
+all_discord_vec = read.delim(getFileLocation(allDiscordFile), skip = 5,header = TRUE)
+all_discord_vec$fractional = as.numeric(all_discord_vec$X.2.Discordance/all_discord_vec$X.3.Number.of.sites)
+
+all_discord_matrix = matrix(NA,nrow = 537, ncol = 537)
+
+# reshape data into matrix
+j = 1
+for (i in 1:(nrow(all_discord_matrix)-1)){
+  all_discord_matrix[i+1,] = c(all_discord_vec$fractional[j:(j+i-1)],rep(0,(537-i)))
+  j = j+i
+}
+
+rownames(all_discord_matrix) = c("MSSM_RNA_ACC_1", as.character(unique(all_discord_vec$X.5.Sample.i)))
+colnames(all_discord_matrix) = c(as.character(unique(all_discord_vec$X.6.Sample.j)), "PITT_RNA_ACC_BP_982")
+
+
+hist(all_discord_matrix[lower.tri(all_discord_matrix)], col = "honeydew", main = "RNA-RNA discordance")
+hist(all_discord_matrix[lower.tri(all_discord_matrix)], col = "honeydew", main = "RNA-RNA non-self discordance (zoom)", ylim = range(0,300),breaks = 40, xlab = "fractional discordance")
+
+# Which samples are potential duplicates (e.g. high concordance)?
+concordant_count = apply(all_discord_matrix,MARGIN = 2,function(x) {length(intersect(which(x < 0.2), which(x > 0)))})
+names(which(concordant_count > 0))
+suspectCols = which(concordant_count > 0)
+
+for (i in 1:length(suspectCols)){
+  print(colnames(all_discord_matrix)[suspectCols[i]])
+  print(paste('non-self matches:', intersect(names(which(all_discord_matrix[,suspectCols[i]] < 0.2)), names(which(all_discord_matrix[,suspectCols[i]] > 0))), sep = ' '))  
+}
