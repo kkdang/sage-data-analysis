@@ -1,0 +1,15 @@
+---
+title: "profile_metadata.Rmd"
+author: "Kristen Dang"
+date: "March 4, 2015"
+output: html_document
+---
+
+```{r message=FALSE,warning=FALSE,fig.height=9,fig.width=9}
+library(synapseClient)
+synapseLogin()
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+tmp = processMetadata(ver = 3,plot = TRUE)
+```

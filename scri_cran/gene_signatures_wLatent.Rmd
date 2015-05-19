@@ -1,0 +1,282 @@
+---
+title: "gene_signatures_wLatent.Rmd"
+author: "Kristen Dang"
+date: "February 23, 2015"
+output: html_document
+---
+
+
+```{r message=FALSE,warning=FALSE}
+#library(ggplot2)
+#library(GO.db)
+#library(corrgram)
+library("VennDiagram")
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
+
+proteinCoding_genes = getByBiotype()
+
+```
+
+
+Filter metadata, convert to numeric, log transform
+```{r}
+temp = metadata
+toConvert = c(8,9,12,13,14)
+for (i in toConvert){
+  temp[,i] = as.numeric(temp[,i])
+}
+temp[,c(5,10,15)] = log(temp[,c(5,10,15)])
+
+toFilter = c('File', 'Biomarker_ID', 'Time_Trial', 'LIBRARY', 'PCT_RIBOSOMAL_BASES','READ_GROUP','RIBOSOMAL_BASES','STRAND_SPECIFICITY','SeqSampleName')
+metadataFiltered = temp[,-which(colnames(temp)%in%toFilter)]
+head(metadataFiltered)
+```
+
+Get PALX20 protein-coding dataset
+```{r}
+## All data, PALO
+palo.dge = generateDataObj('syn2820309')
+palo.dge = calcNormFactors(palo.dge)
+metadataFiltered = metadataFiltered[match(colnames(palo.dge),metadataFiltered$Px_Code),]
+
+## Protein-coding genes, PALX=20%
+palx20.dge = filterByFractionPresent(palo.dge,fraction=0.2,minCount = 3)
+temp.dge = palx20.dge[which(rownames(palx20.dge) %in% proteinCoding_genes[,1]),]
+pc_palx20.dge = DGEList(counts = getCounts(temp.dge),remove.zeros = TRUE)
+pc_palx20.dge = calcNormFactors(pc_palx20.dge)
+pc_palx20.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palx20.dge))
+plotBCV(pc_palx20.dge)
+rm(temp.dge,palx20.dge)
+```
+
+Get the latent factors
+```{r}
+latentEnt = synGet('syn3234833') # PEER with allcov 
+latent_allcov = read.table(getFileLocation(latentEnt),header = TRUE)
+latent_allcov = latent_allcov[match(rownames(latent_allcov),colnames(pc_palx20.dge)),]
+latentEnt = synGet('syn3234903') # PEER with no cov
+latent_nocov = read.table(getFileLocation(latentEnt),header = TRUE)
+latent_nocov = latent_nocov[match(rownames(latent_nocov),colnames(pc_palx20.dge)),]
+
+meta_latent = cbind(metadataFiltered,latent_allcov)
+#meta_latent = cbind(metadataFiltered,latent_nocov)
+```
+
+
+Models
+```{r}
+makeModels=function(minimalSet){
+  factors_to_consider = c("Days_in_LN2","MEDIAN_3PRIME_BIAS","MEDIAN_5PRIME_BIAS","PCT_MRNA_BASES","CODING_BASES")
+  
+  # case control full design
+  ccDesign = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider),collapse = "+"),sep = "+")), data = meta_latent)
+  
+  # no sample origin
+  ccDesign_model1 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[-1]),collapse = "+"),sep = "+")), data = meta_latent)
+  
+  # no Days in LN2
+  ccDesign_model2 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[-2]),collapse = "+"),sep = "+")), data = meta_latent)
+  
+  # no Initial growth duration
+  ccDesign_model3 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[-3]),collapse = "+"),sep = "+")), data = meta_latent)
+  
+  # no for RNA date set up
+  ccDesign_model4 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[-4]),collapse = "+"),sep = "+")), data = meta_latent)
+  
+  # no RNA days to harvest
+  ccDesign_model5 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[-5]),collapse = "+"),sep = "+")), data = meta_latent)
+  
+  # minimal known factors, includes latent factors
+  ccDesign_model6 = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = meta_latent)
+  
+  
+  designlist = list(ccFull=ccDesign,noLN2=ccDesign_model1,noMed3=ccDesign_model2,noMed5=ccDesign_model3,noPCTm=ccDesign_model4,noCOD=ccDesign_model5,minimal=ccDesign_model6)
+  return(designlist)
+}
+#colnames(ccDesign) = make.names(colnames(ccDesign))
+
+```
+
+Case-control signatures using latent factors
+```{r}
+# Case - control (2 group), with known and latent factors 
+cutoff = 0.05
+computeFit=function(in.dge,design,plotTitle=modelName,pval=cutoff){
+  data.voom = voom(in.dge,design,plot=TRUE)
+  fit = lmFit(data.voom,design)
+  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=plotTitle,limma=TRUE)
+  DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+  print(length(which(DEgeneTable$adj.P.Val<pval)))
+  return(DEgeneTable)
+}
+
+# Using latent factors calculated with all covariates
+minimalSet = c("Age_mos.","Sex","Initial_growth_duration_days","for_RNA_date_set_up","RNA_days_to_harvest","MEDIAN_CV_COVERAGE","factor_1","factor_2","factor_3","factor_4")
+allModels=makeModels(minimalSet)
+
+chooseModel = selectModel(voom(pc_palx20.dge),designlist,criterion = "bic")
+x = table(chooseModel$pref)
+chooseModel = selectModel(voom(pc_palx20.dge),designlist,criterion = "aic")
+votes = rbind(x,table(chooseModel$pref))
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection using PEER (all cov) 4f")
+
+
+
+minimalSet = c("Age_mos.","Sex","Initial_growth_duration_days","for_RNA_date_set_up","RNA_days_to_harvest","MEDIAN_CV_COVERAGE","factor_1","factor_2","factor_3","factor_4", "factor_5","factor_6","factor_7")
+allModels=makeModels(minimalSet)
+
+chooseModel = selectModel(voom(pc_palx20.dge),designlist,criterion = "bic")
+x = table(chooseModel$pref)
+chooseModel = selectModel(voom(pc_palx20.dge),designlist,criterion = "aic")
+votes = rbind(x,table(chooseModel$pref))
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection using PEER (all cov) 7f")
+
+modelName = "case-control +factors"
+#rownames(design) = colnames(in.dge)
+my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=allModels$minimal)  
+results_PEERallcov = computeFit(pc_palx20.dge,design = allModels$minimal)
+de_all = rownames(results_PEERallcov)[which(results_PEERallcov$adj.P.Val<cutoff)]
+
+
+# Using latent factors calculated without covariates
+results_PEERnocov = computeFit(pc_palx20.dge,design = allModels$minimal)
+de_no = rownames(results_PEERnocov)[which(results_PEERnocov$adj.P.Val<cutoff)]
+
+venn.diagram(list(allcov=de_all,nocov=de_no),filename = "venn_de_comparisons_cc_7f.png",imagetype = "png")
+```  
+  
+  
+Four-group models  
+```{r}
+run4GroupModelFits=function(in.dge,pval=0.05){
+  op = par(mfrow = c(2,4))
+  accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
+  accumulatedResults = matrix(NA,nrow = nrow(pc_palo.dge),ncol = 1,dimnames = list(rownames(pc_palo.dge),c("default")))
+  DEgeneLists = list()
+  DEfits = list()
+  
+  # Control vs each sample groups (4 cases, 1 control), with factors pval < 0.05 for PC1
+  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$Px.Code),c(6,10,14,15)]
+  rownames(clinicalDesign) = colnames(in.dge)
+  clinicalDesign$group = in.dge$samples$group
+  x = which(colnames(clinAlignMerged) == "Sample.Type")
+  clinicalDesign$group = clinAlignMerged[match(rownames(clinicalDesign),clinAlignMerged$Px.Code),c(x)]
+  clinicalDesign$group = as.character(clinicalDesign$group)
+  clinicalDesign$group[grep("Coronal",clinicalDesign$group)] = "Coronal"
+  clinicalDesign$group[grep("Metopic",clinicalDesign$group)] = "Metopic"
+  clinicalDesign$group[grep("Sagittal",clinicalDesign$group)] = "Sagittal"
+  clinicalDesign$group = as.factor(clinicalDesign$group)
+  design = model.matrix(~0+group+Initial.growth.duration..days.+RNA.days.to.harvest,data=clinicalDesign)
+  my.contrasts = makeContrasts(coronalVScontrol = groupCoronal-groupControl, MetopicVScontrol = groupMetopic-groupControl, sagittalVScontrol = groupSagittal-groupControl, lambdoidVScontrol = groupLambdoid-groupControl, levels=design)
+  fit = glmFit(in.dge, design)
+  
+  modelName = "coronal-control sig factors"
+  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pval=pval,plotTitle=modelName)
+  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+  DEgeneTable = topTags(testResults$lrt,n=10000)$table
+  DEgeneLists[[4]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
+  names(DEgeneLists)[[4]] = modelName
+  DEfits[[4]] = testResults$lrt$fitted.values
+  names(DEfits)[[4]] = modelName
+  runGoseq(testResults$lrt)
+  
+  
+  modelName = "Metopic-control sig factors"
+  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,2],pval=pval,plotTitle=modelName)
+  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+  DEgeneTable = topTags(testResults$lrt,n=10000)$table
+  DEgeneLists[[5]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
+  names(DEgeneLists)[[5]] = modelName
+  DEfits[[5]] = testResults$lrt$fitted.values
+  names(DEfits)[[5]] = modelName
+  
+  
+  modelName = "Sagittal-control sig factors"
+  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,3],pval=pval,plotTitle=modelName)
+  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+  DEgeneTable = topTags(testResults$lrt,n=10000)$table
+  DEgeneLists[[6]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
+  names(DEgeneLists)[[6]] = modelName
+  
+  
+  modelName = "Lambdoid-control sig factors"
+  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,4],pval=pval,plotTitle=modelName)
+  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+  DEgeneTable = topTags(testResults$lrt,n=10000)$table
+  DEgeneLists[[7]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
+  names(DEgeneLists)[[7]] = modelName
+  par(op)
+}
+```
+
+
+Dotchart and Venn plots
+```{r}
+# Dotchart of number DE genes
+plotDotchart=function(inAccumulatedCounts){
+  par(mfrow = c(1,1))
+  inAccumulatedCounts
+  x = data.frame(inAccumulatedCounts)
+  print(x)
+  x$num_sig = as.numeric(as.character(x$num_sig))
+  dotchart(x[,2],labels=x$model,xlab = "number significant genes",bg="tomato",lcolor="tomato",cex=1.2)
+}
+
+# Venn of DE genes for different models
+plotVennDEGenes=function(inDEgeneLists,filename="venn_case-control.tiff"){
+  venn.diagram(list(sigFactors=inDEgeneLists$'case-control sig factors',sigFactorsSex=inDEgeneLists$'case-control sig factors+age+sex',noFactors=inDEgeneLists$'case-control no factors',alignFactors=inDEgeneLists$'case-control + align factors',alignSigAgeSex=inDEgeneLists$'case-control sig factors + align factors + age + sex'),filename=filename,margin=0.2)
+#  venn.diagram(list(Coronal=inDEgeneLists$'coronal-control sig factors',Sagittal=inDEgeneLists$'Sagittal-control sig factors',Metopic=inDEgeneLists$'Metopic-control sig factors',Lambdoid=inDEgeneLists$'Lambdoid-control sig factors'),filename="venn_case-control_groups.tiff")
+  }
+```
+
+
+Heatmap
+```{r}
+## Heatmaps for various lists
+library('gplots')
+library('RColorBrewer')
+
+# Genes found using sig factors models (w and w/o sex)
+plotCols = c("gold", "azure4")
+temp = log2(DEfits[[1]])
+heatmap.2(temp[which(rownames(temp) %in% intersect(DEgeneLists$'case-control sig factors',DEgeneLists$'case-control sig factors+sex')),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(pc_palx_mincount2.dge$samples$group)])
+```
+
+
+
+Looking at gene lists
+```{r}
+# Genes found comparing individual groups to controls
+plotCols = c("azure4",brewer.pal(n=4,name="Accent"))
+temp = log2(testResults$lrt$fitted.values)
+listOfInterest = setdiff(DEgeneLists$'coronal-control sig factors', union(DEgeneLists$'Lambdoid-control sig factors',union(DEgeneLists$'Metopic-control sig factors',DEgeneLists$'Sagittal-control sig factors')))
+heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
+legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
+
+
+listOfInterest = setdiff(DEgeneLists$'Metopic-control sig factors', union(DEgeneLists$'Lambdoid-control sig factors',union(DEgeneLists$'coronal-control sig factors',DEgeneLists$'Sagittal-control sig factors')))
+heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
+legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
+
+
+listOfInterest = setdiff(DEgeneLists$'Sagittal-control sig factors', union(DEgeneLists$'Lambdoid-control sig factors',union(DEgeneLists$'coronal-control sig factors',DEgeneLists$'Metopic-control sig factors')))
+heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
+legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
+
+
+listOfInterest = setdiff(DEgeneLists$'Lambdoid-control sig factors', union(DEgeneLists$'Sagittal-control sig factors',union(DEgeneLists$'coronal-control sig factors',DEgeneLists$'Metopic-control sig factors')))
+heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
+legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
+```
+
+Phenotypic data
+```{r}
+phenoEntity = synGet('syn2731159')
+phenoData = read.csv(getFileLocation(phenoEntity))
+
+par(mfrow = c(1,2))
+boxplot(phenoData$Alk.Phos~phenoData$X.1, main = "Alk Phos measurement", col = "powderblue")
+boxplot(phenoData$BrdU~phenoData$X.1, main = "BrdU measurement", col = "powderblue")
+```
