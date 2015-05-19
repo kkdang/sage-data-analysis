@@ -2,283 +2,85 @@
 title: "gene_signatures.Rmd"
 author: "Kristen Dang"
 date: "11/17/2014"
-output: html_document
+output:
+  html_document:
+    fig_height: 7
 ---
 
 ```{r message=FALSE,warning=FALSE}
-library(ggplot2)
-library(GO.db)
-library(corrgram)
 library("VennDiagram")
-source('~/Computing/sage-data-analysis/scri_cran/cranio_common_routines.R')
-```
+library('rGithubClient')
+library('gplots')
+library('RColorBrewer')
 
-Alignment data
-```{r}
-alignEntity = synGet('syn2820392')
-align = read.csv(getFileLocation(alignEntity))
-colnames(align)
-```
-
-
-Datasets with different filters
-```{r}
-## All data, PALO
-tmp = generateDataAndClinicalObj('syn2820309')
-palo.dge = tmp$DGE
-clinicalDataR = tmp$VARS
-clinicalDataR = clinicalDataR[match(colnames(palo.dge),clinicalDataR$"Px Code"),]
-
-# clean up the hideous column names
-colnames(clinicalDataR) = sapply(strsplit(colnames(clinicalDataR),split = " "), function(x){paste(x,sep = "",collapse="_")})
-colnames(clinicalDataR) = sapply(strsplit(colnames(clinicalDataR),split = "[()]"), function(x){paste(x,sep = "",collapse="")})
-
-caseStatus = rep("case", nrow(clinicalDataR))
-caseStatus[which(clinicalDataR$"Sample_Type" == "Control")] = "control"
-clinicalDataR$caseStatus = caseStatus
-
-clinAlignMerged = cbind(clinicalDataR,align[match(clinicalDataR$SeqSampleName, align$SAMPLE),])
-head(clinAlignMerged)
-
-
-palo.dge = calcNormFactors(palo.dge)
-
-## Protein-coding genes, PALO
+token = read.delim('~/Movies/rGHclient_token.txt',header = FALSE)
+setGithubToken(as.character(token[1,1]))
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
 proteinCoding_genes = getByBiotype()
-pc.dge = palo.dge[which(rownames(palo.dge) %in% proteinCoding_genes[,1]),]
-pc_palo.dge = calcNormFactors(pc.dge)
-pc_palo.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palo.dge))
-plotBCV(pc_palo.dge)
-
-## Protein-coding genes, PALX=15%
-# z = table(paloCounts_wdetect$detected)
-# bound = ceiling(.25*total_samples)
-# detectThreshold = mean(as.vector(z[bound:(bound*2)])) / total_samples 
-palx15.dge = filterByFractionPresent(palo.dge,fraction = 0.15,minCount = 1)
-pc_palx15.dge = palx15.dge[which(rownames(palx15.dge) %in% proteinCoding_genes[,1]),]
-pc_palx15.dge = calcNormFactors(pc_palx15.dge)
-pc_palx15.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palx15.dge))
-plotBCV(pc_palx15.dge)
-
-
-palx25.dge = filterByFractionPresent(palo.dge,fraction = 0.25,minCount = 1)
-pc_palx25.dge = palx25.dge[which(rownames(palx25.dge) %in% proteinCoding_genes[,1]),]
-pc_palx25.dge = calcNormFactors(pc_palx25.dge)
-pc_palx25.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palx25.dge))
-plotBCV(pc_palx25.dge)
-
-
-## Protein-coding genes, PALX=50%
-palx50.dge = filterByFractionPresent(palo.dge,fraction=0.5,minCount = 1)
-pc_palx50.dge = palx50.dge[which(rownames(palx50.dge) %in% proteinCoding_genes[,1]),]
-pc_palx50.dge = calcNormFactors(pc_palx50.dge)
-pc_palx50.dge = estimateTagwiseDisp(estimateCommonDisp(pc_palx50.dge))
-plotBCV(pc_palx50.dge)
-
-rm(tmp,palx15.dge,palx50.dge)
+cutoff = 0.05
 
 ```
 
-
-Functions to look for signatures
+Filter and convert metadata
 ```{r}
-palx_cutoff = 0.25
-runModelFits=function(in.dge,pval=0.05){
-  op = par(mfrow = c(2,4))
-  accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
-  accumulatedResults = matrix(NA,nrow = nrow(in.dge),ncol = 1,dimnames = list(rownames(in.dge),c("default")))
-  DEgeneLists = list()
-#  DEfits = list()
-  index = 1
-  
-  # Case - control (2 group), with no factors 
-  modelName = "case-control no factors"
-  cfactorsToInclude = c("caseStatus")
-  clinicalDesign = as.factor(clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)])
-  design = model.matrix(~0+caseStatus,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-  
-  
-  # Case - control (2 group), with factors pval < 0.05 for PC1
-  modelName = "case-control sig factors"
-  cfactorsToInclude = c("RNA_days_to_harvest", "Initial_growth_duration_days", "caseStatus")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  rownames(clinicalDesign) = colnames(in.dge)
-  design = model.matrix(~0+caseStatus+Initial_growth_duration_days+RNA_days_to_harvest,data=clinicalDesign)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-  
-  # Case - control (2 group), with factors pval < 0.05 for PC1 + age + sex
-  modelName = "case-control sig factors+age+sex"
-  cfactorsToInclude = c("RNA_days_to_harvest", "Initial_growth_duration_days", "caseStatus", "Age_mos.", "Sex")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  rownames(clinicalDesign) = colnames(in.dge)
-  design = model.matrix(~0+caseStatus+Initial_growth_duration_days+RNA_days_to_harvest+Age_mos.+Sex,data=clinicalDesign)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-  
-  
-  # Case - control (2 group), with alignment factors 
-  modelName = "case-control + align factors"
-  cfactorsToInclude = c("caseStatus", "PCT_MRNA_BASES", "MEDIAN_3PRIME_BIAS")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  design = model.matrix(~0+caseStatus+MEDIAN_3PRIME_BIAS+PCT_MRNA_BASES,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+```
 
 
-  # Case - control (2 group) with factors pval < 0.05 for PC1, with alignment factors 
-  modelName = "case-control sig factors + align factors"
-  cfactorsToInclude = c("caseStatus", "PCT_MRNA_BASES", "MEDIAN_3PRIME_BIAS", "RNA_days_to_harvest", "Initial_growth_duration_days")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  design = model.matrix(~0+caseStatus+MEDIAN_3PRIME_BIAS+PCT_MRNA_BASES+RNA_days_to_harvest+Initial_growth_duration_days,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
+
+Get PALX20 protein-coding dataset with outliers removed
+```{r warning=FALSE, message=FALSE}
+data.dge = generateDataObj('syn2820309')
+
+outlierTable = synTableQuery('SELECT * FROM syn3354503')
+outlierData = outlierTable@values
+noOutliers.dge = data.dge[,-which(colnames(data.dge) %in% outlierData$minimalSet)]
+
+## Remove samples that don't have seq data.
+## Order the data in the same way for counts and metadata
+metadataMatching = metadataFiltered[-which(!metadataFiltered$Px_Code %in% colnames(noOutliers.dge)),]
+metadataMatching = metadataMatching[match(colnames(noOutliers.dge), metadataMatching$Px_Code),]
+head(metadataMatching$Px_Code)
+head(colnames(noOutliers.dge))
+
+## Protein-coding genes, PALX=20%
+b = as.list(rownames(noOutliers.dge))
+strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})  
+pc.dge = noOutliers.dge[which(strippedNames %in% proteinCoding_genes[,1]),]
+pc_palo.dge = DGEList(counts = getCounts(pc.dge),group = pc.dge$samples$group)
+pc_palx20.dge = filterByFractionPresent(pc_palo.dge,fraction=0.20,minCount=3)
+pc_palx20.dge = calcNormFactors(pc_palx20.dge)
+```
 
 
-   # Case - control (2 group) with factors pval < 0.05 for PC1, with alignment factors + age + sex
-  modelName = "case-control sig factors + align factors + age + sex"
-  cfactorsToInclude = c("caseStatus", "PCT_MRNA_BASES", "MEDIAN_3PRIME_BIAS", "RNA_days_to_harvest", "Initial_growth_duration_days",  "Age_mos.", "Sex")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  design = model.matrix(~0+caseStatus+MEDIAN_3PRIME_BIAS+PCT_MRNA_BASES++RNA_days_to_harvest+Initial_growth_duration_days+Age_mos.+Sex,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
+Models
+```{r echo=FALSE}
+makeModels=function(minimalSet){
+  factors_to_consider = c("PCT_INTRONIC_BASES", "MEDIAN_CV_COVERAGE", "Days_in_LN2")
 
-  par(op)
-  accumulatedResults = accumulatedResults[,-1]
-  return(list(accumulatedCounts=accumulatedCounts, DEgeneLists = DEgeneLists, accumulatedResults=accumulatedResults))
+  # case control minimal design
+  ccDesign = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = metadataMatching)
+  
+  # with PCT_INTRONIC
+  ccDesign_model1 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[1]),collapse = "+"),sep = "+")), data = metadataMatching)
+  
+  # with MEDIAN_CV_COVERAGE
+  ccDesign_model2 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[2]),collapse = "+"),sep = "+")), data = metadataMatching)
+
+    # with Days in LN2
+  ccDesign_model3 = model.matrix(as.formula(paste("~0+caseStatus",paste(c(minimalSet,factors_to_consider[3]),collapse = "+"),sep = "+")), data = metadataMatching)
+
+  designlist = list(ccMinimal=ccDesign,pCTInt=ccDesign_model1,medCV=ccDesign_model2,LN2=ccDesign_model3)
+  return(designlist)
 }
-  
-  
-run4GroupModelFits=function(in.dge,pval=0.05){
-  op = par(mfrow = c(2,4))
-  accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
-  accumulatedResults = matrix(NA,nrow = nrow(pc_palo.dge),ncol = 1,dimnames = list(rownames(pc_palo.dge),c("default")))
-  DEgeneLists = list()
-  DEfits = list()
-  
-  # Control vs each sample groups (4 cases, 1 control), with factors pval < 0.05 for PC1
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$Px.Code),c(6,10,14,15)]
-  rownames(clinicalDesign) = colnames(in.dge)
-  clinicalDesign$group = in.dge$samples$group
-  x = which(colnames(clinAlignMerged) == "Sample.Type")
-  clinicalDesign$group = clinAlignMerged[match(rownames(clinicalDesign),clinAlignMerged$Px.Code),c(x)]
-  clinicalDesign$group = as.character(clinicalDesign$group)
-  clinicalDesign$group[grep("Coronal",clinicalDesign$group)] = "Coronal"
-  clinicalDesign$group[grep("Metopic",clinicalDesign$group)] = "Metopic"
-  clinicalDesign$group[grep("Sagittal",clinicalDesign$group)] = "Sagittal"
-  clinicalDesign$group = as.factor(clinicalDesign$group)
-  design = model.matrix(~0+group+Initial.growth.duration..days.+RNA.days.to.harvest,data=clinicalDesign)
-  my.contrasts = makeContrasts(coronalVScontrol = groupCoronal-groupControl, MetopicVScontrol = groupMetopic-groupControl, sagittalVScontrol = groupSagittal-groupControl, lambdoidVScontrol = groupLambdoid-groupControl, levels=design)
-  fit = glmFit(in.dge, design)
-  
-  modelName = "coronal-control sig factors"
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pval=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=10000)$table
-  DEgeneLists[[4]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[4]] = modelName
-  DEfits[[4]] = testResults$lrt$fitted.values
-  names(DEfits)[[4]] = modelName
-  runGoseq(testResults$lrt)
-  
-  
-  modelName = "Metopic-control sig factors"
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,2],pval=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=10000)$table
-  DEgeneLists[[5]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[5]] = modelName
-  DEfits[[5]] = testResults$lrt$fitted.values
-  names(DEfits)[[5]] = modelName
-  
-  
-  modelName = "Sagittal-control sig factors"
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,3],pval=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=10000)$table
-  DEgeneLists[[6]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[6]] = modelName
-  
-  
-  modelName = "Lambdoid-control sig factors"
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,4],pval=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=10000)$table
-  DEgeneLists[[7]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[7]] = modelName
-  par(op)
-  }
+#colnames(ccDesign) = make.names(colnames(ccDesign))
+
 ```
 
-
-
-```{r}
+Functions
+```{r echo=FALSE}
 # Dotchart of number DE genes
 plotDotchart=function(inAccumulatedCounts){
   par(mfrow = c(1,1))
@@ -288,212 +90,640 @@ plotDotchart=function(inAccumulatedCounts){
   x$num_sig = as.numeric(as.character(x$num_sig))
   dotchart(x[,2],labels=x$model,xlab = "number significant genes",bg="tomato",lcolor="tomato",cex=1.2)
 }
-
-# Venn of DE genes for different models
-plotVennDEGenes=function(inDEgeneLists){
-  venn.diagram(list(sigFactors=inDEgeneLists$'case-control sig factors',sigFactorsSex=inDEgeneLists$'case-control sig factors+age+sex',noFactors=inDEgeneLists$'case-control no factors',alignFactors=inDEgeneLists$'case-control + align factors',alignSigAgeSex=inDEgeneLists$'case-control sig factors + align factors + age + sex'),filename="venn_case-control.tiff",margin=0.2)
-#  venn.diagram(list(Coronal=inDEgeneLists$'coronal-control sig factors',Sagittal=inDEgeneLists$'Sagittal-control sig factors',Metopic=inDEgeneLists$'Metopic-control sig factors',Lambdoid=inDEgeneLists$'Lambdoid-control sig factors'),filename="venn_case-control_groups.tiff")
-  }
-```
-
-
-Running and plotting model results
-```{r}
-modelFitResults = runModelFits(in.dge = pc_palx25.dge,pval = 0.05)
-plotDotchart(modelFitResults$accumulatedCounts)
-plotVennDEGenes(modelFitResults$DEgeneLists)
-
-corrgram(modelFitResults$accumulatedResults,lower.panel = panel.ellipse,upper.panel = panel.pie, diag.panel=panel.density,type = 'data') 
-```
-
-```{r}
-## Heatmaps for various lists
-library('gplots')
-library('RColorBrewer')
-
-# Genes found using sig factors models (w and w/o sex)
-plotCols = c("gold", "azure4")
-temp = log2(DEfits[[1]])
-heatmap.2(temp[which(rownames(temp) %in% intersect(DEgeneLists$'case-control sig factors',DEgeneLists$'case-control sig factors+sex')),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(pc_palx_mincount2.dge$samples$group)])
-```
-
-
-Now using limma-voom
-```{r}
-runModelFits=function(in.dge,pval=0.05){
-  op = par(mfrow = c(2,4))
-  accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
-  accumulatedResults = matrix(NA,nrow = nrow(in.dge),ncol = 1,dimnames = list(rownames(in.dge),c("default")))
-  DEgeneLists = list()
-#  DEfits = list()
-  index = 1
-  
-  # Case - control (2 group), with no factors 
-  modelName = "case-control no factors"
-  cfactorsToInclude = c("caseStatus")
-  clinicalDesign = as.factor(clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)])
-  design = model.matrix(~0+caseStatus,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design) 
-  #insert voom here
-
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-  
-  
-  # Case - control (2 group), with factors pval < 0.05 for PC1
-  modelName = "case-control sig factors"
-  cfactorsToInclude = c("RNA_days_to_harvest", "Initial_growth_duration_days", "caseStatus")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  rownames(clinicalDesign) = colnames(in.dge)
-  design = model.matrix(~0+caseStatus+Initial_growth_duration_days+RNA_days_to_harvest,data=clinicalDesign)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-  
-  # Case - control (2 group), with factors pval < 0.05 for PC1 + age + sex
-  modelName = "case-control sig factors+age+sex"
-  cfactorsToInclude = c("RNA_days_to_harvest", "Initial_growth_duration_days", "caseStatus", "Age_mos.", "Sex")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  rownames(clinicalDesign) = colnames(in.dge)
-  design = model.matrix(~0+caseStatus+Initial_growth_duration_days+RNA_days_to_harvest+Age_mos.+Sex,data=clinicalDesign)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-  
-  
-  # Case - control (2 group), with alignment factors 
-  modelName = "case-control + align factors"
-  cfactorsToInclude = c("caseStatus", "PCT_MRNA_BASES", "MEDIAN_3PRIME_BIAS")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  design = model.matrix(~0+caseStatus+MEDIAN_3PRIME_BIAS+PCT_MRNA_BASES,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-
-
-  # Case - control (2 group) with factors pval < 0.05 for PC1, with alignment factors 
-  modelName = "case-control sig factors + align factors"
-  cfactorsToInclude = c("caseStatus", "PCT_MRNA_BASES", "MEDIAN_3PRIME_BIAS", "RNA_days_to_harvest", "Initial_growth_duration_days")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  design = model.matrix(~0+caseStatus+MEDIAN_3PRIME_BIAS+PCT_MRNA_BASES+RNA_days_to_harvest+Initial_growth_duration_days,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-
-
-   # Case - control (2 group) with factors pval < 0.05 for PC1, with alignment factors + age + sex
-  modelName = "case-control sig factors + align factors + age + sex"
-  cfactorsToInclude = c("caseStatus", "PCT_MRNA_BASES", "MEDIAN_3PRIME_BIAS", "RNA_days_to_harvest", "Initial_growth_duration_days",  "Age_mos.", "Sex")
-  clinicalDesign = clinAlignMerged[match(colnames(in.dge),clinAlignMerged$"Px_Code"),which(colnames(clinAlignMerged) %in% cfactorsToInclude)]
-  design = model.matrix(~0+caseStatus+MEDIAN_3PRIME_BIAS+PCT_MRNA_BASES++RNA_days_to_harvest+Initial_growth_duration_days+Age_mos.+Sex,data=clinicalDesign)
-  rownames(design) = colnames(in.dge)
-  my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=design)  
-  fit = glmFit(in.dge, design)
-  testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=pval,plotTitle=modelName)
-  accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
-  DEgeneTable = topTags(testResults$lrt,n=nrow(in.dge))$table
-  accumulatedResults = cbind(accumulatedResults, DEgeneTable$PValue[match(rownames(accumulatedResults), rownames(DEgeneTable))])
-  colnames(accumulatedResults)[index+1] = modelName
-  DEgeneLists[[index]] = rownames(DEgeneTable)[which(DEgeneTable$FDR<pval)]
-  names(DEgeneLists)[[index]] = modelName
-#   DEfits[[index]] = testResults$lrt$fitted.values
-#   names(DEfits)[[index]] = modelName
-  index = index+1
-
-  par(op)
-  accumulatedResults = accumulatedResults[,-1]
-  return(list(accumulatedCounts=accumulatedCounts, DEgeneLists = DEgeneLists, accumulatedResults=accumulatedResults))
+computeFit=function(in.dge,design,inContrast=my.contrasts[,1],plotTitle=modelName,pval=cutoff){
+  data.voom = voom(in.dge,design,plot=FALSE)
+  fit = lmFit(data.voom,design)
+  testResults = calculateDE(in.fit=fit,inContrast=inContrast,pcutoff=pval,plotTitle=plotTitle,limma=TRUE)
+  DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+  xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < pval]
+  xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+  plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+  print(length(which(DEgeneTable$adj.P.Val<pval)))
+  return(DEgeneTable)
 }
 
-v <- voom(dge,design,plot=TRUE)
-
 ```
 
 
 
-
-
-
-
-
-Looking at gene lists
+Case-control signatures 
 ```{r}
-# Genes found comparing individual groups to controls
-plotCols = c("azure4",brewer.pal(n=4,name="Accent"))
-temp = log2(testResults$lrt$fitted.values)
-listOfInterest = setdiff(DEgeneLists$'coronal-control sig factors', union(DEgeneLists$'Lambdoid-control sig factors',union(DEgeneLists$'Metopic-control sig factors',DEgeneLists$'Sagittal-control sig factors')))
-heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
-legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
+modelName = "case-control + full"
+minimalSet = c("Age_mos.","Sex","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES")
+ccModel = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = metadataMatching)
+rownames(ccModel) = colnames(pc_palx20.dge)
+my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
+results_ccFull = computeFit(pc_palx20.dge,design = ccModel)
+de_all = rownames(results_ccFull)[which(results_ccFull$adj.P.Val<cutoff)]
 
-
-listOfInterest = setdiff(DEgeneLists$'Metopic-control sig factors', union(DEgeneLists$'Lambdoid-control sig factors',union(DEgeneLists$'coronal-control sig factors',DEgeneLists$'Sagittal-control sig factors')))
-heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
-legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
-
-
-listOfInterest = setdiff(DEgeneLists$'Sagittal-control sig factors', union(DEgeneLists$'Lambdoid-control sig factors',union(DEgeneLists$'coronal-control sig factors',DEgeneLists$'Metopic-control sig factors')))
-heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
-legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
-
-
-listOfInterest = setdiff(DEgeneLists$'Lambdoid-control sig factors', union(DEgeneLists$'Sagittal-control sig factors',union(DEgeneLists$'coronal-control sig factors',DEgeneLists$'Metopic-control sig factors')))
-heatmap.2(temp[which(rownames(temp) %in% listOfInterest),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(clinicalDesign$group)])
-legend(locator(n=1),legend=c(levels(clinicalDesign$group)),fill=plotCols)
 ```
 
+
+Four-group models set up
+```{r} 
+in.dge = pc_palx20.dge
+
+accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
+accumulatedResults = matrix(NA,nrow = nrow(pc_palo.dge),ncol = 1,dimnames = list(rownames(pc_palo.dge),c("default")))
+DEgeneLists = list()
+DEfits = list()
+
+# Control vs each sample groups (4 cases, 1 control), with factors pval < 0.05 for PC1
+shortMeta = metadataMatching
+shortMeta$Sample_Type = as.character(shortMeta$Sample_Type)
+shortMeta$Sample_Type[grep("Coronal",shortMeta$Sample_Type)] = "Coronal"
+shortMeta$Sample_Type[grep("Metopic",shortMeta$Sample_Type)] = "Metopic"
+shortMeta$Sample_Type[grep("Sagittal",shortMeta$Sample_Type)] = "Sagittal"
+shortMeta$Sample_Type = as.factor(shortMeta$Sample_Type)
+STmodel = model.matrix(as.formula(paste("~0+Sample_Type",paste(minimalSet,collapse = "+"),sep = "+")), data = shortMeta)
+my.contrasts = makeContrasts(coronalVScontrol = Sample_TypeCoronal-Sample_TypeControl, MetopicVScontrol = Sample_TypeMetopic-Sample_TypeControl, sagittalVScontrol = Sample_TypeSagittal-Sample_TypeControl, lambdoidVScontrol = Sample_TypeLambdoid-Sample_TypeControl, levels=STmodel)
+#  fit = glmFit(in.dge, design)
+data.voom = voom(in.dge,STmodel,plot=FALSE)
+fit = lmFit(data.voom,STmodel)
+groupResiduals = residuals(fit,y=data.voom)
+```
+
+4 group comparisons
+```{r echo=FALSE}
+## Coronal
+op = par(mfrow = c(2,2))
+modelName = "Coronal-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+DEgeneLists[[1]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
+names(DEgeneLists)[[1]] = modelName
+DEfits[[1]] = testResults$fit
+names(DEfits)[[1]] = modelName
+
+## Metopic
+modelName = "Metopic-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,2],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+DEgeneLists[[2]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
+names(DEgeneLists)[[2]] = modelName
+DEfits[[2]] = testResults$fit
+names(DEfits)[[2]] = modelName
+
+## Sagittal
+modelName = "Sagittal-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,3],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+DEgeneLists[[3]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
+names(DEgeneLists)[[3]] = modelName
+DEfits[[3]] = testResults$fit
+names(DEfits)[[3]] = modelName
+
+
+## Lambdoid
+modelName = "Lambdoid-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,4],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+DEgeneLists[[4]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
+names(DEgeneLists)[[4]] = modelName
+DEfits[[4]] = testResults$fit
+names(DEfits)[[4]] = modelName
+par(op)
+```
+
+Summary
+```{r echo=FALSE}
+#accumulatedCounts = accumulatedCounts[-1,]
+#venn.diagram(list(Coronal=DEgeneLists$'coronal-control sig factors',Sagittal=DEgeneLists$'Sagittal-control sig factors',Metopic=DEgeneLists$'Metopic-control sig factors',Lambdoid=DEgeneLists$'Lambdoid-control sig factors'),filename="venn_case-control_4groups.tiff",fill = c("grey63","gold2","coral","white"))
+
+#venn.diagram(list(Coronal=DEgeneLists$'Coronal-control sig factors',Sagittal=DEgeneLists$'Sagittal-control sig factors',Metopic=DEgeneLists$'Metopic-control sig factors',case=de_all),filename="venn_case-control_and_groups.tiff",fill = c("grey63","gold2","coral","paleturquoise"))
+
+plotDotchart(inAccumulatedCounts = accumulatedCounts)
+
+```
+
+
+Direction consistency
 ```{r}
-phenoEntity = synGet('syn2731159')
-phenoData = read.csv(getFileLocation(phenoEntity))
+# coronal-sagittal
+cs_inter = intersect(DEgeneLists$'Coronal-control sig factors', DEgeneLists$'Sagittal-control sig factors')
+c_TT = topTable(DEfits[[1]],number = nrow(in.dge))
+c_inter_FC = c_TT$logFC[rownames(c_TT) %in% cs_inter]
+names(c_inter_FC) = rownames(c_TT)[rownames(c_TT) %in% cs_inter]
+c_inter_pos = c_inter_FC > 0
 
-par(mfrow = c(1,2))
-boxplot(phenoData$Alk.Phos~phenoData$X.1, main = "Alk Phos measurement", col = "powderblue")
-boxplot(phenoData$BrdU~phenoData$X.1, main = "BrdU measurement", col = "powderblue")
+s_TT = topTable(DEfits[[3]],number = nrow(in.dge))
+s_inter_FC = s_TT$logFC[rownames(s_TT) %in% cs_inter]
+names(s_inter_FC) = rownames(s_TT)[rownames(s_TT) %in% cs_inter]
+s_inter_pos = s_inter_FC > 0
+
+# genes that do not have a consistent FC direction between coronal and sagittal
+which(abs(c_inter_pos - s_inter_pos) > 0)
+print(paste('Number consistent', length(which(abs(c_inter_pos - s_inter_pos) == 0)), sep = ' '))
+print(paste('Number inconsistent', length(which(abs(c_inter_pos - s_inter_pos) > 0)), sep = ' '))
+
+cs_names = setdiff(cs_inter, names(which(abs(c_inter_pos - s_inter_pos) > 0)))
+# # Save consistent gene list to Synapse
+# write.csv(setdiff(cs_inter, names(which(abs(c_inter_pos - s_inter_pos) > 0))),file = "geneList_DEcs_consistentdirection.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_DEcs_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp = synStore(entity = tmp)
+
+
+
+# coronal-metopic
+cm_inter = intersect(DEgeneLists$'Coronal-control sig factors', DEgeneLists$'Metopic-control sig factors')
+c_TT = topTable(DEfits[[1]],number = nrow(in.dge))
+c_inter_FC = c_TT$logFC[rownames(c_TT) %in% cm_inter]
+names(c_inter_FC) = rownames(c_TT)[rownames(c_TT) %in% cm_inter]
+c_inter_pos = c_inter_FC > 0
+
+m_TT = topTable(DEfits[[2]],number = nrow(in.dge))
+m_inter_FC = m_TT$logFC[rownames(m_TT) %in% cm_inter]
+names(m_inter_FC) = rownames(m_TT)[rownames(m_TT) %in% cm_inter]
+m_inter_pos = m_inter_FC > 0
+
+# genes that do not have a consistent FC direction between coronal and sagittal
+which(abs(c_inter_pos - m_inter_pos) > 0)
+print(paste('Number consistent', length(which(abs(c_inter_pos - m_inter_pos) == 0)), sep = ' '))
+print(paste('Number inconsistent', length(which(abs(c_inter_pos - m_inter_pos) > 0)), sep = ' '))
+
+
+
+# sagittal-metopic
+sm_inter = intersect(DEgeneLists$'Sagittal-control sig factors', DEgeneLists$'Metopic-control sig factors')
+s_TT = topTable(DEfits[[3]],number = nrow(in.dge))
+s_inter_FC = s_TT$logFC[rownames(s_TT) %in% sm_inter]
+names(s_inter_FC) = rownames(s_TT)[rownames(s_TT) %in% sm_inter]
+s_inter_pos = s_inter_FC > 0
+
+m_TT = topTable(DEfits[[2]],number = nrow(in.dge))
+m_inter_FC = m_TT$logFC[rownames(m_TT) %in% sm_inter]
+names(m_inter_FC) = rownames(m_TT)[rownames(m_TT) %in% sm_inter]
+m_inter_pos = m_inter_FC > 0
+
+# genes that do not have a consistent FC direction between coronal and sagittal
+which(abs(s_inter_pos - m_inter_pos) > 0)
+print(paste('Number consistent', length(which(abs(s_inter_pos - m_inter_pos) == 0)), sep = ' '))
+print(paste('Number inconsistent', length(which(abs(s_inter_pos - m_inter_pos) > 0)), sep = ' '))
+
+sm_names = setdiff(sm_inter, names(which(abs(s_inter_pos - m_inter_pos) > 0)))
+# # Save consistent gene list to Synapse
+# write.csv(setdiff(sm_inter, names(which(abs(s_inter_pos - m_inter_pos) > 0))),file = "geneList_DEsm_consistentdirection.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_DEsm_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp = synStore(entity = tmp)
+
+
+
+
+
+# directional consistency among coronal, sagittal and metopic common genes
+csm_inter = intersect(DEgeneLists$'Coronal-control sig factors', intersect(DEgeneLists$'Sagittal-control sig factors', DEgeneLists$'Metopic-control sig factors'))
+s_TT = topTable(DEfits[[3]],number = nrow(in.dge))
+s_inter_FC = s_TT$logFC[rownames(s_TT) %in% csm_inter]
+names(s_inter_FC) = rownames(s_TT)[rownames(s_TT) %in% csm_inter]
+s_inter_pos = s_inter_FC > 0
+
+m_TT = topTable(DEfits[[2]],number = nrow(in.dge))
+m_inter_FC = m_TT$logFC[rownames(m_TT) %in% csm_inter]
+names(m_inter_FC) = rownames(m_TT)[rownames(m_TT) %in% csm_inter]
+m_inter_pos = m_inter_FC > 0
+
+c_TT = topTable(DEfits[[1]],number = nrow(in.dge))
+c_inter_FC = c_TT$logFC[rownames(c_TT) %in% csm_inter]
+names(c_inter_FC) = rownames(c_TT)[rownames(c_TT) %in% csm_inter]
+c_inter_pos = c_inter_FC > 0
+
+
+# genes that do not have a consistent FC direction between coronal, sagittal, and metopic
+which(abs(s_inter_pos - m_inter_pos) > 0)
+inconsistentNames = union(names(which(abs(s_inter_pos - m_inter_pos) > 0)), names(which(abs(c_inter_pos - s_inter_pos) > 0)))
+print(paste('Number consistent', length(s_inter_pos)-length(inconsistentNames), sep = ' '))
+print(paste('Number inconsistent', length(inconsistentNames), sep = ' '))
+
+csm_names = setdiff(csm_inter, inconsistentNames)
+# Save consistent gene list to Synapse
+# write.csv(setdiff(csm_inter, inconsistentNames),file = "geneList_DEcsm_consistentdirection.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_DEcsm_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp = synStore(entity = tmp)
 ```
+
+
+Pheno factors
+```{r}
+op = par(mfrow = c(2,4))
+boxplot(AlkP~caseStatus,data=shortMeta, col = "aliceblue", main = "AlkP")
+boxplot(AlkP~Sample_Type,data=shortMeta,las = 2, col = "aliceblue")
+
+boxplot(BrdU~caseStatus,data=shortMeta, col = "aliceblue", main = "BrdU")
+boxplot(BrdU~Sample_Type,data=shortMeta,las = 2, col = "aliceblue")
+
+boxplot(RNA_days_to_harvest~caseStatus,data=shortMeta, col = "aliceblue", main = "RNA daysTH")
+boxplot(RNA_days_to_harvest~Sample_Type,data=shortMeta,las = 2, col = "aliceblue")
+
+boxplot(Initial_growth_duration_days~caseStatus,data=shortMeta, col = "aliceblue", main = "Initial GDD")
+boxplot(Initial_growth_duration_days~Sample_Type,data=shortMeta,las = 2, col = "aliceblue")
+par(op)
+```
+
+
+Now looking at genes DE by phenotypic factors. 
+First looking for things with correlation to factor in cases only, separating on the 4 groups.
+```{r}
+# Make case-only dataset
+in.dge = pc_palx20.dge[,-which(shortMeta$Sample_Type == "Control")]
+dim(in.dge)
+caseMeta = shortMeta[-which(shortMeta$Sample_Type == "Control"),]
+dim(caseMeta)
+
+op = par(mfrow = c(2,2))
+accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
+accumulatedResults = matrix(NA,nrow = nrow(pc_palo.dge),ncol = 1,dimnames = list(rownames(pc_palo.dge),c("default")))
+DEgeneLists = list()
+DEfits = list()
+```
+
+
+## Sticking in heatmaps of DE 4-group lists
+```{r}
+## Heatmaps 
+
+### Using residuals of model that does NOT include AlkP
+plotCols = c("grey63","white", "coral","gold2")
+tempMeta = caseMeta
+tempMeta$Sample_Type = as.factor(as.character(tempMeta$Sample_Type))
+tempModel = model.matrix(as.formula(paste("~0+Sample_Type",paste(minimalSet,collapse = "+"),sep = "+")), data = tempMeta)
+data.voom = voom(in.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+resid = residuals(fit,y = data.voom)
+
+### clustered
+heatmap.2(resid[which(rownames(resid) %in% csm_names),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(tempMeta$Sample_Type)],dendrogram = "column", main = "csm consistent genes")
+
+heatmap.2(resid[which(rownames(resid) %in% cs_names),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(tempMeta$Sample_Type)],dendrogram = "column", main = "cs consistent genes")
+
+heatmap.2(resid[which(rownames(resid) %in% sm_names),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(tempMeta$Sample_Type)],dendrogram = "column", main = "sm consistent genes")
+
+
+```
+
+
+
+### AlkP
+```{r}
+# Gene genes significantly correlated with AlkP in cases
+alkPmeta = caseMeta[which(!is.na(caseMeta$AlkP)),]
+dim(alkPmeta)
+alkP.dge = in.dge[,which(colnames(in.dge)%in%alkPmeta$Px_Code)]
+dim(alkP.dge)
+AlkPmodel = model.matrix(as.formula(paste("~0+Sample_Type+AlkP",paste(minimalSet,collapse = "+"),sep = "+")), data = alkPmeta)
+rownames(AlkPmodel) = alkPmeta$Px_Code
+modelName = "coronal-control + AlkP"
+data.voom = voom(alkP.dge,AlkPmodel,plot=FALSE)
+fit = lmFit(data.voom,AlkPmodel)
+testResults = calculateDE(in.fit=fit,pcutoff=cutoff,inContrast = FALSE,plotTitle=modelName,limma = TRUE,inCoef = 'AlkP')
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef = 'AlkP',number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+###
+residToPlot = groupResiduals[which(rownames(groupResiduals) %in% xSig),which(colnames(groupResiduals) %in% colnames(alkP.dge))]
+zSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 0.01]
+op = par(mfrow = c(2,3))
+for (i in 1:length(zSig)){
+  plot(residToPlot[i,],alkPmeta$AlkP)
+}
+par(op)
+print(getHGNC(zSig))
+
+# What are the correlation estimates
+dim(groupResiduals[,which(colnames(groupResiduals) %in% colnames(alkP.dge))])
+colnames(testResults$fit$design)
+alkPvec = testResults$fit$design[,6]
+length(alkPvec)
+alkPvec = alkPvec[na.omit(match(colnames(groupResiduals), names(alkPvec)))]
+names(alkPvec)
+colnames(groupResiduals)
+
+alkP_corrs = apply(groupResiduals[,which(colnames(groupResiduals) %in% colnames(alkP.dge))],MARGIN = 1,cor, y=alkPvec)
+hist(alkP_corrs)
+
+caseCorrsSig = alkP_corrs[which(names(alkP_corrs) %in% xSig)]
+hist(caseCorrsSig, col = "aliceblue", breaks = 20)
+
+
+
+# Get genes correlated with AlkP in control for comparison
+alkPcontrolMeta = shortMeta[which(shortMeta$Sample_Type == "Control"),]
+dim(alkPcontrolMeta)
+alkPcontrolMeta = alkPcontrolMeta[which(!is.na(alkPcontrolMeta$AlkP)),]
+dim(alkPcontrolMeta)
+alkP.dge = pc_palx20.dge[,which(colnames(pc_palx20.dge)%in%alkPcontrolMeta$Px_Code)]
+dim(alkP.dge)
+AlkPmodel = model.matrix(as.formula(paste("~0+AlkP",paste(minimalSet,collapse = "+"),sep = "+")), data = alkPcontrolMeta)
+rownames(AlkPmodel) = alkPcontrolMeta$Px_Code
+modelName = "control, AlkP"
+data.voom = voom(alkP.dge,AlkPmodel,plot=FALSE)
+fit = lmFit(data.voom,AlkPmodel)
+testResults = calculateDE(in.fit=fit,pcutoff=cutoff,inContrast = FALSE,plotTitle=modelName,limma = TRUE,inCoef = 'AlkP')
+#accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef = 'AlkP',number = nrow(in.dge))
+controlSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+controlStatus = as.numeric(rownames(testResults$fit) %in% controlSig)
+length(intersect(controlSig,xSig))
+length(setdiff(controlSig,xSig))
+# These are the genes that are correlated with AlkP only in cases, not controls
+length(setdiff(xSig,controlSig))
+
+
+# Now since there is less power to detect correlation in controls, look at value of correlation in the ones significant in cases
+dim(groupResiduals[,which(colnames(groupResiduals) %in% colnames(alkP.dge))])
+colnames(testResults$fit$design)
+alkPvec = testResults$fit$design[,1]
+length(alkPvec)
+alkPvec = alkPvec[na.omit(match(colnames(groupResiduals), names(alkPvec)))]
+names(alkPvec)
+colnames(groupResiduals)
+
+alkP_controlCorrs = apply(groupResiduals[,which(colnames(groupResiduals) %in% colnames(alkP.dge))],MARGIN = 1,cor, y=alkPvec)
+hist(alkP_controlCorrs)
+controlCorrsSig = alkP_controlCorrs[which(names(alkP_controlCorrs) %in% controlSig)]
+hist(controlCorrsSig, col = "aliceblue", breaks = 20)
+
+controlsMatchingCaseSig = alkP_controlCorrs[which(names(alkP_controlCorrs) %in% names(caseCorrsSig))]
+case_control_diffs = caseCorrsSig - controlsMatchingCaseSig
+hist(case_control_diffs)
+largeDiffs = names(which(abs(case_control_diffs) > 0.2))
+
+hist(caseCorrsSig[which(names(caseCorrsSig) %in% largeDiffs)])
+print(getHGNC(largeDiffs))
+
+
+## Heatmaps 
+
+### Using residuals of model that does NOT include AlkP
+plotCols = c("grey63","coral","gold2")
+alkP.dge = in.dge[,which(colnames(in.dge)%in%alkPmeta$Px_Code)]
+dim(alkP.dge)
+alkPmeta$Sample_Type = as.factor(as.character(alkPmeta$Sample_Type))
+tempModel = model.matrix(as.formula(paste("~0+Sample_Type",paste(minimalSet,collapse = "+"),sep = "+")), data = alkPmeta)
+data.voom = voom(alkP.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+resid = residuals(fit,y = data.voom)
+
+### clustered
+heatmap.2(resid[which(rownames(resid) %in% largeDiffs),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(alkPmeta$Sample_Type)],dendrogram = "column")
+
+### ordered by AlkP
+temp = alkPmeta[order(alkPmeta$AlkP),]
+temp$AlkP
+resid = resid[,match(temp$Px_Code,colnames(resid))]
+heatmap.2(resid[which(rownames(resid) %in% allSig),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(alkPmeta$Sample_Type)],dendrogram = "none",Colv=NULL,key = FALSE)
+
+
+# # Save gene list of AlkP correlated genes to Synapse
+# write.csv(largeDiffs,file = "geneList_alkPcorr_cases.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_alkPcorr_cases.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp = synStore(entity = tmp)
+```
+
+
+### BrdU
+```{r}
+# Gene genes significantly correlated with BrdU in cases
+BrdUmeta = caseMeta[which(!is.na(caseMeta$BrdU)),]
+BrdUmeta$Sample_Type = as.factor(as.character(BrdUmeta$Sample_Type))
+dim(BrdUmeta)
+BrdU.dge = in.dge[,which(colnames(in.dge)%in%BrdUmeta$Px_Code)]
+dim(BrdU.dge)
+BrdUmodel = model.matrix(as.formula(paste("~0+Sample_Type+BrdU",paste(minimalSet,collapse = "+"),sep = "+")), data = BrdUmeta)
+rownames(BrdUmodel) = BrdUmeta$Px_Code
+modelName = "coronal-control + BrdU"
+data.voom = voom(BrdU.dge,BrdUmodel,plot=FALSE)
+fit = lmFit(data.voom,BrdUmodel)
+testResults = calculateDE(in.fit=fit,pcutoff=cutoff,inContrast = FALSE,plotTitle=modelName,limma = TRUE,inCoef = 'BrdU')
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef = 'BrdU',number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+###
+residToPlot = groupResiduals[which(rownames(groupResiduals) %in% xSig),which(colnames(groupResiduals) %in% colnames(BrdU.dge))]
+zSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 0.01]
+op = par(mfrow = c(2,3))
+for (i in 1:length(zSig)){
+  plot(residToPlot[i,],BrdUmeta$BrdU)
+}
+par(op)
+print(getHGNC(zSig))
+
+# What are the correlation estimates
+dim(groupResiduals[,which(colnames(groupResiduals) %in% colnames(BrdU.dge))])
+colnames(testResults$fit$design)
+BrdUvec = testResults$fit$design[,4]
+length(BrdUvec)
+BrdUvec = BrdUvec[na.omit(match(colnames(groupResiduals), names(BrdUvec)))]
+names(BrdUvec)
+colnames(groupResiduals)
+
+BrdU_corrs = apply(groupResiduals[,which(colnames(groupResiduals) %in% colnames(BrdU.dge))],MARGIN = 1,cor, y=BrdUvec)
+hist(BrdU_corrs)
+
+caseCorrsSig = BrdU_corrs[which(names(BrdU_corrs) %in% xSig)]
+hist(caseCorrsSig, col = "aliceblue", breaks = 20)
+
+
+
+# Get genes correlated with BrdU in control for comparison
+BrdUcontrolMeta = shortMeta[which(shortMeta$Sample_Type == "Control"),]
+dim(BrdUcontrolMeta)
+BrdUcontrolMeta = BrdUcontrolMeta[which(!is.na(BrdUcontrolMeta$BrdU)),]
+dim(BrdUcontrolMeta)
+BrdU.dge = pc_palx20.dge[,which(colnames(pc_palx20.dge)%in%BrdUcontrolMeta$Px_Code)]
+dim(BrdU.dge)
+BrdUmodel = model.matrix(as.formula(paste("~0+BrdU",paste(minimalSet,collapse = "+"),sep = "+")), data = BrdUcontrolMeta)
+rownames(BrdUmodel) = BrdUcontrolMeta$Px_Code
+modelName = "control, BrdU"
+data.voom = voom(BrdU.dge,BrdUmodel,plot=FALSE)
+fit = lmFit(data.voom,BrdUmodel)
+testResults = calculateDE(in.fit=fit,pcutoff=cutoff,inContrast = FALSE,plotTitle=modelName,limma = TRUE,inCoef = 'BrdU')
+#accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef = 'BrdU',number = nrow(in.dge))
+controlSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+controlStatus = as.numeric(rownames(testResults$fit) %in% controlSig)
+length(intersect(controlSig,xSig))
+length(setdiff(controlSig,xSig))
+# These are the genes that are correlated with BrdU only in cases, not controls
+length(setdiff(xSig,controlSig))
+
+
+# Now since there is less power to detect correlation in controls, look at value of correlation in the ones significant in cases
+dim(groupResiduals[,which(colnames(groupResiduals) %in% colnames(BrdU.dge))])
+colnames(testResults$fit$design)
+BrdUvec = testResults$fit$design[,1]
+length(BrdUvec)
+BrdUvec = BrdUvec[na.omit(match(colnames(groupResiduals), names(BrdUvec)))]
+names(BrdUvec)
+colnames(groupResiduals)
+
+BrdU_controlCorrs = apply(groupResiduals[,which(colnames(groupResiduals) %in% colnames(BrdU.dge))],MARGIN = 1,cor, y=BrdUvec)
+hist(BrdU_controlCorrs)
+controlCorrsSig = BrdU_controlCorrs[which(names(BrdU_controlCorrs) %in% controlSig)]
+hist(controlCorrsSig, col = "aliceblue", breaks = 20)
+
+controlsMatchingCaseSig = BrdU_controlCorrs[which(names(BrdU_controlCorrs) %in% names(caseCorrsSig))]
+case_control_diffs = caseCorrsSig - controlsMatchingCaseSig
+hist(case_control_diffs)
+largeDiffs = names(which(abs(case_control_diffs) > 0.2))
+
+hist(caseCorrsSig[which(names(caseCorrsSig) %in% largeDiffs)])
+print(getHGNC(largeDiffs))
+
+
+## Heatmaps 
+
+### Using residuals of model that does NOT include BrdU
+plotCols = c("grey63","coral","gold2")
+BrdU.dge = in.dge[,which(colnames(in.dge)%in%BrdUmeta$Px_Code)]
+dim(BrdU.dge)
+BrdUmeta$Sample_Type = as.factor(as.character(BrdUmeta$Sample_Type))
+tempModel = model.matrix(as.formula(paste("~0+Sample_Type",paste(minimalSet,collapse = "+"),sep = "+")), data = BrdUmeta)
+data.voom = voom(BrdU.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+resid = residuals(fit,y = data.voom)
+
+### clustered
+heatmap.2(resid[which(rownames(resid) %in% largeDiffs),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(BrdUmeta$Sample_Type)],dendrogram = "column")
+
+### ordered by BrdU
+temp = BrdUmeta[order(BrdUmeta$BrdU),]
+temp$BrdU
+resid = resid[,match(temp$Px_Code,colnames(resid))]
+heatmap.2(resid[which(rownames(resid) %in% allSig),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(BrdUmeta$Sample_Type)],dendrogram = "none",Colv=NULL,key = FALSE)
+
+
+# # Save gene list of BrdU correlated genes to Synapse
+# write.csv(largeDiffs,file = "geneList_BrdUcorr_cases.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_BrdUcorr_cases.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp = synStore(entity = tmp)
+
+```
+
+
+
+### RNA days to harvest
+```{r}
+RNA_days_to_harvestmeta = caseMeta[which(!is.na(caseMeta$RNA_days_to_harvest)),]
+dim(RNA_days_to_harvestmeta)
+RNA_days_to_harvest.dge = in.dge[,which(colnames(in.dge)%in%RNA_days_to_harvestmeta$Px_Code)]
+dim(RNA_days_to_harvest.dge)
+RNA_days_to_harvestmodel = model.matrix(as.formula(paste("~0+Sample_Type+RNA_days_to_harvest",paste(minimalSet,collapse = "+"),sep = "+")), data = RNA_days_to_harvestmeta)
+modelName = "sampleType + RNA_days_to_harvest"
+data.voom = voom(RNA_days_to_harvest.dge,RNA_days_to_harvestmodel,plot=FALSE)
+fit = lmFit(data.voom,RNA_days_to_harvestmodel)
+testResults = calculateDE(in.fit=fit,pcutoff=cutoff,inContrast = FALSE,plotTitle=modelName,limma = TRUE,inCoef = 'RNA_days_to_harvest')
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef = 'RNA_days_to_harvest',number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+###
+residToPlot = groupResiduals[which(rownames(groupResiduals) %in% xSig),which(colnames(groupResiduals) %in% colnames(RNA_days_to_harvest.dge))]
+zSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 0.01]
+op = par(mfrow = c(2,3))
+for (i in 1:5){
+  plot(residToPlot[i,],RNA_days_to_harvestmeta$RNA_days_to_harvest)
+}
+par(op)
+print(getHGNC(zSig)[1:25,])
+
+### 
+DEgeneLists[[3]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
+names(DEgeneLists)[[3]] = modelName
+DEfits[[3]] = testResults$fit
+names(DEfits)[[3]] = modelName
+
+
+# Get genes correlated with AlkP in both case and control for comparison
+RNA_days_to_harvestmeta = shortMeta[which(!is.na(shortMeta$RNA_days_to_harvest)),]
+dim(RNA_days_to_harvestmeta)
+RNA_days_to_harvest.dge = pc_palx20.dge[,which(colnames(pc_palx20.dge)%in%RNA_days_to_harvestmeta$Px_Code)]
+dim(RNA_days_to_harvest.dge)
+RNA_days_to_harvestmodel = model.matrix(as.formula(paste("~0+Sample_Type+RNA_days_to_harvest",paste(minimalSet,collapse = "+"),sep = "+")), data = RNA_days_to_harvestmeta)
+modelName = "sample_type + RNA_days_to_harvest"
+data.voom = voom(RNA_days_to_harvest.dge,RNA_days_to_harvestmodel,plot=FALSE)
+fit = lmFit(data.voom,RNA_days_to_harvestmodel)
+testResults = calculateDE(in.fit=fit,pcutoff=cutoff,inContrast = FALSE,plotTitle=modelName,limma = TRUE,inCoef = 'RNA_days_to_harvest')
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef = 'RNA_days_to_harvest',number = nrow(in.dge))
+allSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+allStatus = as.numeric(rownames(testResults$fit) %in% allSig)
+length(intersect(allSig,xSig))
+length(setdiff(allSig,xSig))
+# These are the genes that are correlated with RNA_days_to_harvest only in cases, not controls
+length(setdiff(xSig,allSig))
+#print(getHGNC(setdiff(xSig,allSig)))
+
+
+## Heatmaps 
+
+### Using residuals of model that does NOT include sampleType or RNA_days_to_harvest
+plotCols = c("darkslategray2","grey63","white","coral","gold2")
+tempModel = model.matrix(as.formula(paste("~0",paste(minimalSet,collapse = "+"),sep = "+")), data = RNA_days_to_harvestmeta)
+data.voom = voom(RNA_days_to_harvest.dge,tempModel,plot=FALSE)
+fit = lmFit(data.voom,tempModel)
+resid = residuals(fit,y = data.voom)
+superSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 5e-6]
+
+
+### clustered
+heatmap.2(resid[which(rownames(resid) %in% allSig)[1:400],],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(RNA_days_to_harvestmeta$Sample_Type)],dendrogram = "column")
+
+### ordered by RNA_days_to_harvest
+temp = RNA_days_to_harvestmeta[order(RNA_days_to_harvestmeta$RNA_days_to_harvest),]
+temp$RNA_days_to_harvest
+resid = resid[,match(temp$Px_Code,colnames(resid))]
+heatmap.2(resid[which(rownames(resid) %in% allSig)[1:400],],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(RNA_days_to_harvestmeta$Sample_Type)],dendrogram = "none",Colv=NULL,key = FALSE)
+
+```
+
+
+### Sex
+```{r}
+Sexmeta = caseMeta[which(!is.na(caseMeta$Sex)),]
+Sexmeta$Sample_Type = as.factor(as.character(Sexmeta$Sample_Type))
+dim(Sexmeta)
+Sex.dge = in.dge[,which(colnames(in.dge)%in%Sexmeta$Px_Code)]
+dim(Sex.dge)
+Sexmodel = model.matrix(as.formula(paste("~0+Sample_Type+caseStatus:Sex",paste(minimalSet,collapse = "+"),sep = "+")), data = Sexmeta)
+modelName = "sampleType + Sex"
+data.voom = voom(Sex.dge,Sexmodel,plot=FALSE)
+fit = lmFit(data.voom,Sexmodel)
+testResults = calculateDE(in.fit=fit,inContrast=FALSE,pcutoff=cutoff,plotTitle=modelName,limma = TRUE,inCoef = "SexM")
+#accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,coef="SexM",number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+x = which(rownames(DEgeneTable) %in% xSig)
+plot(DEgeneTable$AveExpr,DEgeneTable$logFC, main = "Significant by Sex")
+points(DEgeneTable$AveExpr[x],DEgeneTable$logFC[x],pch = 16, cex = 0.5, col = "green3")
+plot(DEgeneTable$AveExpr,DEgeneTable$logFC,ylim = range(-2,2),pch = 16, cex = 0.3, main = "Significant by Sex")
+points(DEgeneTable$AveExpr[x],DEgeneTable$logFC[x],pch = 16, cex = 0.5, col = "green3")
+length(xSig)
+print(getHGNC(xSig)[1:25,])
+
+DEgeneLists[[3]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
+names(DEgeneLists)[[3]] = modelName
+DEfits[[3]] = testResults$fit
+names(DEfits)[[3]] = modelName
+
+```
+
+
