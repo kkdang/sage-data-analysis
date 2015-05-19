@@ -1,24 +1,30 @@
 ---
-title: "variance_analysis.Rmd"
+title: "variance_analysis_voom.Rmd"
 author: "Kristen Dang"
 date: "December 19, 2014"
-output: html_document
+output:
+  html_document:
+    fig_height: 7
 ---
 
 ```{r message=FALSE,warning=FALSE}
-library('FactoMineR')
+library('rGithubClient')
 library(corrgram)
-library('synapseClient')
-synapseLogin()
-
 source('~/Computing/sage-data-analysis/voom_fit.R')
-source('~/Computing/sage-data-analysis/scri_cran/cranio_common_routines.R')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
 setwd('/Users/kristen/Computing/cranio/')
-cutoff = 0.01
-proteinCoding_transcripts = getByBiotype(biotype = 'protein_coding',gene = FALSE)
+cutoff = 0.05
+
 proteinCoding_genes = getByBiotype(biotype = 'protein_coding',gene = TRUE)
+proteinCoding_transcripts = getByBiotype(biotype = 'protein_coding',gene = FALSE)
 ```
 
+Filter and convert metadata
+```{r}
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 3,plot = FALSE)
+```
 
 Function to make PC datasets with different filters 
 ```{r}
@@ -99,85 +105,53 @@ generate_PCA_datasets=function(in.dge,pcNames,factoMine=FALSE,mc=1,TMM=TRUE){
   }
   return(pc_palo.dge)
 }
-```
-
-
-Results from multiple sailfish outputs
-```{r}
-align$sampNames = lookupRev$UDF.Investigator.Sample.Name[match(as.character(align$SAMPLE), lookupRev$Sample.Name)]
-head(align)
-metricsToSkip = c('READ_GROUP', 'RIBOSOMAL_BASES', 'SAMPLE', 'STRAND_SPECIFICITY', 'sampNames', 'PCT_RIBOSOMAL_BASES', 'LIBRARY')
-alignToCheck = align[,-which(colnames(align) %in% metricsToSkip)]
-
-op = par(mfrow = c(3,3))
-for (i in 1:ncol(alignToCheck)){ hist(alignToCheck[,i], main = colnames(alignToCheck)[i])}
-par(op)
-corrgram(alignToCheck,lower.panel = panel.pts,upper.panel = panel.pie)
 
 plotcols = c("orangered", "royalblue")
 
-pcaPlots=function(in.dge,pcNames,clin=correctedClinical,categ=categ,palx=0.20,mc=3,TMM=TRUE){
+pcaPlots=function(in.dge,pcNames,clin,categ=categ,palx=0.20,mc=3,TMM=TRUE){
   pc_palo.dge = generate_PCA_datasets(in.dge = in.dge, pcNames=pcNames,mc=mc,TMM=TMM)
   pc_palx.dge = filterByFractionPresent(pc_palo.dge,fraction=palx,minCount=mc)
   if (TMM) { pc_palx.dge = calcNormFactors(pc_palx.dge) }
   pc_palx.pca = prcomp_PCA(in.voom = voom_normalize(pc_palx.dge))
   # Factomine plot of samples
-  caseStatus = as.character(pc_palo.dge$samples$group)
-  caseStatus[which(clinicalDataR$Sample_Type == "Control")] = "control"
   fm.pca = FM_PCA(in.voom = voom_normalize(pc_palx.dge))
-  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "none")
-  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(caseStatus))],label = "all",cex=0.8)
+  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(clin$caseStatus))],label = "none")
+  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(clin$caseStatus))],label = "all",cex=0.8)
   legend("topright",legend = c("case", "control"),col = plotcols,pch = 16)
   calc_plot_PC_corr(in.pca = pc_palx.pca$x,inClinical=clin,categorical=categ)
 }
+```
 
 
-#################
-## Gene counts ##
+Gene counts
+```{r}
 plot(1, main = "gene counts")
-tmp = generateDataAndClinicalObj('syn2820309')
-data.dge = tmp$DGE
-clinicalDataR = tmp$VARS
-head(clinicalDataR)
-clinicalDataR = clinicalDataR[match(colnames(data.dge),clinicalDataR$Px_Code),]
-temp = clinicalDataR
-toConvert = c(8,9,12,13,14)
-for (i in toConvert){
-  temp[,i] = as.numeric(temp[,i])
-}
-temp[,c(5,10,15)] = log(temp[,c(5,10,15)])
-corrgram(temp,lower.panel = panel.pts,upper.panel = panel.pie)
-correctedClinical = temp
+data.dge = generateDataObj('syn2820309')
+#data.dge = generateDataObjDeprecated('syn2820309')
 
-clinAlignMerged = cbind(temp,align[match(temp$SeqSampleName, align$SAMPLE),-c(6,16,21,22,24,26)])
-head(clinAlignMerged)
+## Remove samples that don't have seq data.
+## Order the data in the same way for counts and metadata
+metadataMatching = metadataFiltered[-which(!metadataFiltered$Px_Code %in% colnames(data.dge)),]
+metadataMatching = metadataMatching[match(colnames(data.dge), metadataMatching$Px_Code),]
+head(metadataMatching$Px_Code)
+head(colnames(data.dge))
 
-rm(temp)
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_genes,clin=clinAlignMerged[,5:ncol(clinAlignMerged)],categ=c(6,7,16,17)-4,palx=0.20,mc=3)
+metaCategorical = c("Sex", "Sample_Type", "Initial_date_set_up", "Initial_date_freeze", "for_RNA_date_set_up", "for_RNA_date_plated", "for_RNA_date_harvest", "ScanDate", "Sample_Origin", "caseStatus", "SAMPLE" )
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_genes,clin=metadataMatching[,c(2:ncol(metadataMatching))],categ=which(colnames(metadataMatching)%in%metaCategorical)-1,palx=0.20,mc=3)
+```
 
 
-#########
-## TPM ##
-# Using slighly different code, since this data is already TPM and doesn't need cpm transformation
+TPM, using slighly different code, since this data is already TPM and doesn't need cpm transformation.
+```{r}
 plot(1, main = "TPM")
-tmp = generateDataAndClinicalObj('syn3064954')
-data.dge = tmp$DGE
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4,palx=0.10,mc=1,TMM = FALSE)
+data.dge = generateDataObj('syn3064954')
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=metadataMatching[,c(2:ncol(metadataMatching))],categ=which(colnames(metadataMatching)%in%metaCategorical)-1,palx=0.10,mc=1,TMM=FALSE)
+```
 
 
-##################
-# Estimated reads
+Estimated reads
+```{r}
 plot(1, main = "estimated reads")
-tmp = generateDataAndClinicalObj('syn3064890')
-data.dge = tmp$DGE
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4,palx=0.20,mc=60)
-
-
-##################
-# Estimate Kmers
-plot(1, main = "estimated Kmers")
-tmp = generateDataAndClinicalObj('syn3098045')
-data.dge = tmp$DGE
-pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=correctedClinical[,5:(ncol(correctedClinical)-1)],categ=c(6,7,16,17)-4)
-
+data.dge = generateDataObj('syn3064890')
+pcaPlots(in.dge=data.dge,pcNames=proteinCoding_transcripts,clin=metadataMatching[,c(2:ncol(metadataMatching))],categ=which(colnames(metadataMatching)%in%metaCategorical)-1,palx=0.20,mc=60)
 ```
