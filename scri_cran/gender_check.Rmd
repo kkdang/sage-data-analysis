@@ -9,6 +9,8 @@ output: html_document
 library('rGithubClient')
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
+metadataEnt = synGet('syn3241418',version = 3)
+metadata = read.delim(getFileLocation(metadataEnt),header = TRUE)
 ```
 
 
@@ -32,19 +34,26 @@ predictedMales = names(which(YgeneFraction > 1e-4))
 reportedMales = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "M")])
 print("What samples are reported Males but not accourding to chrY counts?")
 setdiff(reportedMales, predictedMales)
+print("What samples are predicted Males accourding to chrY counts but reported Females?")
+setdiff(predictedMales, reportedMales)
 changeMtoF = setdiff(reportedMales, predictedMales)
+YgeneFraction[which(names(YgeneFraction)%in% changeMtoF)]
+hist(YgeneFraction,xlim = range(1e-7,5e-5),breaks = 200)
 
 predictedFemales = setdiff(colnames(palo.dge), predictedMales)
-reportedFemailes = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "F")])
-print("What samples are predicted Famale according to chrY counts but reported Male?")
-setdiff(predictedFemales, reportedFemailes)
+reportedFemales = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "F")])
+print("What samples are predicted Female according to chrY counts but reported Male?")
+setdiff(predictedFemales, reportedFemales)
+print("What samples are reported Female but predicted Male?")
+setdiff(reportedFemales,predictedFemales)
 
 ```
 
 
 Correct the metadata file
 ```{r}
-temp = read.delim(getFileLocation(metadataEnt),header = TRUE)
-temp$Sex[which(temp$Px_Code %in% changeMtoF)] = as.factor("F")
-write.table(temp,file=getFileLocation(metadataEnt),append = FALSE,quote = FALSE,sep = "\t",row.names = FALSE)
-metadataEnt = synStore(metadataEnt)
+# temp = read.delim(getFileLocation(metadataEnt),header = TRUE)
+# temp$Sex[which(temp$Px_Code %in% changeMtoF)] = as.factor("F")
+# write.table(temp,file=getFileLocation(metadataEnt),append = FALSE,quote = FALSE,sep = "\t",row.names = FALSE)
+# metadataEnt = synStore(metadataEnt)
+```
