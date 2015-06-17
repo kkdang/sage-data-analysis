@@ -1,0 +1,105 @@
+---
+title: "analyze_ACC-PFC_discordance.Rmd"
+author: "Kristen Dang"
+date: "June 1, 2015"
+output: html_document
+---
+
+```{r message=FALSE, echo=FALSE}
+library(synapseClient)
+synapseLogin()
+```
+
+## raw discordance
+```{r}
+discordFile = synGet('syn4519846',downloadFile = TRUE)
+discord_total = read.delim(getFileLocation(discordFile), header = TRUE)
+discord_matrix = data.matrix(discord_total)
+hist(discord_matrix, col = "honeydew", main = "raw discordance")
+
+```
+
+
+```{r}
+sitesFile = synGet('syn4519870',downloadFile = TRUE)
+sites = read.delim(getFileLocation(sitesFile), header = TRUE)
+sites_matrix = data.matrix(sites)
+dim(sites_matrix)
+hist(sites_matrix, col = "honeydew", main = "number of sites used to calculate")
+```
+
+
+### Making fractional discordance dataset
+```{r}
+metaFile = synGet("syn2299154")
+metadata = read.csv(getFileLocation(metaFile), fileEncoding="macintosh")
+
+genoIDs = metadata$DNA_genotyping_report..Genotyping.Sample_ID[match(colnames(discord_matrix), metadata$DLPFC_RNA_isolation..Sample.RNA.ID)]
+accIDs = metadata$ACC_RNA_isolation..Sample.RNA.ID[match(colnames(discord_matrix), metadata$DLPFC_RNA_isolation..Sample.RNA.ID)]
+
+# Only retain samples for which there is data in both ACC and PFC
+filtered_discord = discord_matrix[match(toupper(accIDs), toupper(rownames(discord_matrix))),]
+dim(filtered_discord)
+filtered_sites = sites_matrix[match(toupper(accIDs), toupper(rownames(sites_matrix))),]
+dim(filtered_sites)
+
+fractional_discord = filtered_discord / filtered_sites
+hist(fractional_discord, col = "honeydew", main = "fractional discordance")
+hist(fractional_discord, col = "honeydew", xlim = range(0,0.3), breaks = 200, ylim = range(0,200), main = "discordance -- lower tail ")
+```
+
+
+### Self matches, ACC RNA to PFC RNA
+```{r}
+selfMatches = diag(fractional_discord)
+names(selfMatches) = rownames(fractional_discord)
+# How many are NA?
+length(which(is.na(selfMatches)))
+
+
+hist(selfMatches, col = "honeydew", xlab = "self discordance", breaks = 40)
+# Investigating ones that don't match self
+# Which RNA samples don't match self genotype
+which(selfMatches > 0.17)
+
+# Verify a few particular ones
+# First, the two with high missingness in DNA
+selfMatches[which(names(selfMatches) == "MSSM_RNA_ACC_22")] # matches self
+selfMatches[which(names(selfMatches) == "MSSM_RNA_ACC_270")] # does not match self
+
+
+# Three of the "mystery 4" for which there is PFC RNA -- didn't match self or non-self DNA or ACC RNA
+selfMatches[which(names(selfMatches) == "MSSM_RNA_ACC_25")] # doesn't match self
+selfMatches[which(names(selfMatches) == "MSSM_RNA_ACC_71")] # doesn't match self
+selfMatches[which(names(selfMatches) == "MSSM_RNA_ACC_87")] # doesn't match self
+
+# Change the names to DNA ids
+names(selfMatches) = genoIDs
+
+# some of the "mystery 4" -- didn't match self or non-self DNA or ACC RNA
+selfMatches[which(names(selfMatches) == "MSSM_62")]
+selfMatches[which(names(selfMatches) == "MSSM_67")]
+selfMatches[which(names(selfMatches) == "MSSM_231")]
+```
+
+
+
+### Non-self matches
+```{r}
+nonSelfMatches = fractional_discord - diag(x=selfMatches)
+hist(nonSelfMatches, col = "honeydew", xlab = "fractional discordance", breaks = 50, ylim = range(0,40))
+num_low_discord = apply(nonSelfMatches,MARGIN = 2,function(x){length(which(x < 0.2))})
+which(num_low_discord > 1)
+suspectCols = which(num_low_discord > 1)
+
+for (i in 1:length(suspectCols)){
+  print(colnames(nonSelfMatches)[suspectCols[i]])
+  print(paste('non-self matches:', intersect(names(which(nonSelfMatches[,suspectCols[i]] < 0.2)), names(which(nonSelfMatches[,suspectCols[i]] > 0))), sep = ' '))  
+}
+
+# "MSSM_RNA_ACC_270" matches MSSM_RNA_PFC_228 instead of 224. PFC_228 should match ACC_217
+# Still no match for the 3 of the mystery 4.
+# Other swaps / duplicates confirmed
+
+```
+
