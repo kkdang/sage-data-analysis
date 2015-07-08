@@ -33,9 +33,9 @@ hist(sites_matrix, col = "honeydew", main = "number of sites used to calculate (
 ### Making fractional discordance dataset
 ```{r}
 metaFile = synGet("syn2299154")
-metadata = read.csv(getFileLocation(metaFile))
+metadata = read.csv(getFileLocation(metaFile), fileEncoding="macintosh")
 
-genoIDs = metadata$DNA_report..Genotyping.Sample_ID[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)]
+genoIDs = metadata$DNA_genotyping_report..Genotyping.Sample_ID[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)]
 
 
 filtered_discord = discord_matrix[match(toupper(genoIDs), toupper(rownames(discord_matrix))),]
@@ -89,9 +89,9 @@ nonSelfMatches = fractional_discord - diag(x=selfMatches)
 hist(nonSelfMatches, col = "honeydew", xlab = "fractional discordance")
 hist(nonSelfMatches, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,100), main = "nonself discord -- low range")
 hist(nonSelfMatches, col = "honeydew", xlim = range(0.03,0.5), breaks = 200, ylim = range(0,20))
-num_low_discord = apply(nonSelfMatches,MARGIN = 2,function(x){length(which(x < 0.4))})
-which(num_low_discord > 1)
-suspectCols = which(num_low_discord > 1)
+num_low_discord = apply(nonSelfMatches,MARGIN = 2,function(x){length(intersect(which(x < 0.4), which(x > 0)))})
+which(num_low_discord == 1)
+suspectCols = which(num_low_discord == 1)
 
 for (i in 1:length(suspectCols)){
   print(colnames(nonSelfMatches)[suspectCols[i]])
