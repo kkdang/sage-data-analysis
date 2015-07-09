@@ -2,7 +2,9 @@
 title: "analyze_ACC_discordance.Rmd"
 author: "Kristen Dang"
 date: "April 23, 2015"
-output: html_document
+output:
+  html_document:
+    fig_height: 7
 ---
 
 ```{r message=FALSE, echo=FALSE}
@@ -35,8 +37,8 @@ hist(sites_matrix, col = "honeydew", main = "number of sites used to calculate (
 metaFile = synGet("syn2299154")
 metadata = read.csv(getFileLocation(metaFile), fileEncoding="macintosh")
 
+# Data for DNA samples that have an ACC sample
 genoIDs = metadata$DNA_genotyping_report..Genotyping.Sample_ID[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)]
-
 
 filtered_discord = discord_matrix[match(toupper(genoIDs), toupper(rownames(discord_matrix))),]
 dim(filtered_discord)
@@ -46,6 +48,18 @@ dim(filtered_sites)
 fractional_discord = filtered_discord / filtered_sites
 hist(fractional_discord, col = "honeydew", main = "fractional discordance")
 hist(fractional_discord, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,200), main = "discordance -- lower tail ")
+
+# Data for DNA samples that do not have an ACC sample
+noACCids = setdiff(rownames(discord_matrix), genoIDs)
+
+noACCids_discord = discord_matrix[which(rownames(discord_matrix) %in% noACCids),]
+dim(noACCids_discord)
+noACCids_sites = sites_matrix[which(rownames(sites_matrix) %in% noACCids),]
+dim(noACCids_sites)
+
+noACCids_frac_discord = noACCids_discord / noACCids_sites
+hist(noACCids_frac_discord, col = "honeydew", main = "no match fractional discordance")
+hist(noACCids_frac_discord, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,15), main = "discordance -- lower tail ")
 ```
 
 
@@ -60,11 +74,9 @@ which(is.na(selfMatches))
 rownames(fractional_discord)[which(is.na(selfMatches))]
 
 # Why are they NA?
-# Which ones don't have a match between discord results and ACC RNA id? n = 4. These are truly absent from metadata file. Why? ***
-colnames(discord_matrix)[which(is.na(match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)))]
-# Two others are excluded from genotyping because of missingness rate.
-metadata$DNA_report..Exclude.Reason[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)[which(is.na(genoIDs))]]
-# The rest (n = 5) match data in the metadata file, but don't have genotyping for some other reason ("FAKE" ??)
+# Two are excluded from genotyping because of missingness rate.
+metadata$DNA_genotyping_report..Exclude.Reason[match(colnames(discord_matrix), metadata$ACC_RNA_isolation..Sample.RNA.ID)[which(is.na(genoIDs))]]
+# The rest (n = 9) match data in the metadata file, but don't have genotyping for some other reason ("FAKE" ??)
 setdiff(genoIDs, rownames(fractional_discord))
 
 
@@ -86,18 +98,27 @@ intersect(names(which(selfMatches > 0.1)), names(which(selfMatches < 0.5)))
 ### Non-self matches
 ```{r}
 nonSelfMatches = fractional_discord - diag(x=selfMatches)
-hist(nonSelfMatches, col = "honeydew", xlab = "fractional discordance")
-hist(nonSelfMatches, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,100), main = "nonself discord -- low range")
-hist(nonSelfMatches, col = "honeydew", xlim = range(0.03,0.5), breaks = 200, ylim = range(0,20))
-num_low_discord = apply(nonSelfMatches,MARGIN = 2,function(x){length(intersect(which(x < 0.4), which(x > 0)))})
-which(num_low_discord == 1)
-suspectCols = which(num_low_discord == 1)
+nonSelfMatchesPlus = rbind(nonSelfMatches, noACCids_frac_discord)
+hist(nonSelfMatchesPlus, col = "honeydew", xlab = "fractional discordance")
+hist(nonSelfMatchesPlus, col = "honeydew", xlim = range(0,0.5), breaks = 200, ylim = range(0,100), main = "nonself discord -- low range")
+hist(nonSelfMatchesPlus, col = "honeydew", xlim = range(0.03,0.5), breaks = 200, ylim = range(0,20))
+num_low_discord = apply(nonSelfMatchesPlus,MARGIN = 2,function(x){length(intersect(which(x < 0.4), which(x > 0)))})
+which(num_low_discord >= 1)
+suspectCols = which(num_low_discord >= 1)
 
 for (i in 1:length(suspectCols)){
-  print(colnames(nonSelfMatches)[suspectCols[i]])
-  print(paste('non-self matches:', intersect(names(which(nonSelfMatches[,suspectCols[i]] < 0.4)), names(which(nonSelfMatches[,suspectCols[i]] > 0))), sep = ' '))  
+  print(colnames(nonSelfMatchesPlus)[suspectCols[i]])
+  print(paste('non-self matches:', intersect(names(which(nonSelfMatchesPlus[,suspectCols[i]] < 0.4)), names(which(nonSelfMatchesPlus[,suspectCols[i]] > 0))), sep = ' '))  
 }
 
+
+# Specific samples
+toTest = c("MSSM_RNA_ACC_169", "MSSM_RNA_ACC_187", "MSSM_RNA_ACC_66", "MSSM_RNA_ACC_38", "MSSM_RNA_ACC_87", "PENN_RNA_ACC_060")
+op = par(mfrow=c(2,2))
+for (i in 1:length(toTest)) {
+  stripchart(nonSelfMatchesPlus[,which(colnames(nonSelfMatchesPlus) == toTest[i])], main = toTest[i])
+}
+par(op)
 ```
 
 
@@ -121,7 +142,7 @@ colnames(all_discord_matrix) = c(as.character(unique(all_discord_vec$X.6.Sample.
 
 
 hist(all_discord_matrix[lower.tri(all_discord_matrix)], col = "honeydew", main = "RNA-RNA discordance")
-hist(all_discord_matrix[lower.tri(all_discord_matrix)], col = "honeydew", main = "RNA-RNA non-self discordance (zoom)", ylim = range(0,300),breaks = 40, xlab = "fractional discordance")
+hist(all_discord_matrix[lower.tri(all_discord_matrix)], col = "honeydew", main = "RNA-RNA non-self discordance (zoom)", ylim = range(0,100),breaks = 40, xlab = "fractional discordance")
 
 # Which samples are potential duplicates (e.g. high concordance)?
 concordant_count = apply(all_discord_matrix,MARGIN = 2,function(x) {length(intersect(which(x < 0.2), which(x > 0)))})
