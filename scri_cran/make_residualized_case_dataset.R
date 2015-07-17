@@ -64,8 +64,10 @@ tempMeta$Sample_Type = as.factor(as.character(tempMeta$Sample_Type))
 tempModel = model.matrix(as.formula(paste("~",paste(minimalSet,collapse = "+"),sep = "")), data = tempMeta)
 data.voom = voom(in.dge,tempModel,plot=FALSE) 
 fit = lmFit(data.voom,tempModel)
+save(fit,file = "resid_cases_fit.Robj.bz2",compress = "bzip2")
 resid = residuals(fit,y = data.voom)
 write.table(formatC(resid,digits=6,format="fg"),file = "scri-cran_resid_cases.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = TRUE)
 
 ## Save data to Synapse
 synStore(File(path = "scri-cran_resid_cases.tsv",parentId='syn2820780'))
+synStore(File(path = "resid_cases_fit.Robj.bz2",parentId='syn2820780'))
