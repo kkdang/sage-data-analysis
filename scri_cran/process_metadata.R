@@ -29,12 +29,12 @@ processMetadata=function(ver,plot=TRUE){
   # Change to yearly batches
   data = as.matrix(table(substr(metadata$Initial_date_set_up,start = 1,4)))
   if (plot) { barplot(t(data),main = "Initial date set up") }
-  x = as.factor(substr(metadata$Initial_date_set_up,start = 1,7))
+  x = as.factor(substr(metadata$Initial_date_set_up,start = 1,4))
   metadata$Initial_date_set_up = x
   
   data = as.matrix(table(substr(metadata$Initial_date_freeze,start = 1,4)))
   if (plot) { barplot(t(data),main = "Initial date freeze") }
-  x = as.factor(substr(metadata$Initial_date_freeze,start = 1,7))
+  x = as.factor(substr(metadata$Initial_date_freeze,start = 1,4))
   metadata$Initial_date_freeze = x
     
   toFilter = c('File', 'Biomarker_ID', 'Time_Trial', 'LIBRARY', 'PCT_RIBOSOMAL_BASES','READ_GROUP','RIBOSOMAL_BASES','STRAND_SPECIFICITY','SeqSampleName')
