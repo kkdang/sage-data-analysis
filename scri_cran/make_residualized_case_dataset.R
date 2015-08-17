@@ -45,6 +45,9 @@ pc_palx20.dge = calcNormFactors(pc_palx20.dge)
 ## Make case-only dataset
 in.dge = pc_palx20.dge[,-which(metadataMatching$Sample_Type == "Control")]
 dim(in.dge)
+save(in.dge,file = "pc_cases_DGE.Robj.bz2",compress = "bzip2")
+synStore(File(path = "pc_cases_DGE.Robj.bz2",parentId='syn2820780'))
+
 
 metadataMatching$Sample_Type = as.character(metadataMatching$Sample_Type)
 metadataMatching$Sample_Type[grep("Coronal",metadataMatching$Sample_Type)] = "Coronal"
