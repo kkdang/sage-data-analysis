@@ -27,7 +27,7 @@ template_file.closed
 
 # Get data from Synapse table
 auditDataDict = dict()
-results = syn.tableQuery("select VAR_NAME,DESCRIPTION,AUDIT_2015_02 from syn3354658")
+results = syn.tableQuery("select VAR_NAME,DESCRIPTION,AUDIT_2015_05 from syn4312361")
 for result in results:
 	auditDataDict[result[2]] = float(result[4])
    	print '%s = %s' % (result[2], result[4])
@@ -35,7 +35,7 @@ for result in results:
 
 
 # Read math in, calculate and put in dictionary
-with open('/Users/kristen/Computing/Audit/audit_forumulas.txt', 'r') as formulas_file:
+with open('/Users/kristen/Computing/Audit/audit_formulas.txt', 'r') as formulas_file:
 	for line in formulas_file:
 		(valName,formula) = line.split('\t')
 		compFormula = pr.expr(formula).compile()
