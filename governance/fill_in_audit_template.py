@@ -8,6 +8,7 @@ import parser as pr
 
 parser = argparse.ArgumentParser(description='Populates audit template with current audit data.')
 parser.add_argument('--currentFolderId', dest='fid', required=True, help='Synapse ID of folder containing audit data files to process.')
+parser.add_argument('--dateCol', required=True, help='Label of appropriate column in audit data table, e.g. AUDIT_2015_05')
 args = parser.parse_args()
 
 
@@ -27,7 +28,7 @@ template_file.closed
 
 # Get data from Synapse table
 auditDataDict = dict()
-results = syn.tableQuery("select VAR_NAME,DESCRIPTION,AUDIT_2015_05 from syn4312361")
+results = syn.tableQuery(''.join(["select VAR_NAME,DESCRIPTION,", args.dateCol," from syn4892864"]))
 for result in results:
 	auditDataDict[result[2]] = float(result[4])
    	print '%s = %s' % (result[2], result[4])
