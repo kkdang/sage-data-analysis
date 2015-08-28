@@ -461,7 +461,7 @@ hist(controlCorrsSig, col = "aliceblue", breaks = 20)
 
 controlsMatchingCaseSig = alkP_controlCorrs[which(names(alkP_controlCorrs) %in% names(caseCorrsSig))]
 case_control_diffs = caseCorrsSig - controlsMatchingCaseSig
-hist(case_control_diffs)
+hist(case_control_diffs, breaks = 25, col = "aliceblue")
 largeDiffs = names(which(abs(case_control_diffs) > 0.2))
 
 hist(caseCorrsSig[which(names(caseCorrsSig) %in% largeDiffs)])
