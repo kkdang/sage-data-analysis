@@ -1,0 +1,252 @@
+---
+title: "profile_clusters.Rmd"
+author: "Kristen Dang"
+date: "August 18, 2015"
+output: html_document
+---
+
+```{r message=FALSE,warning=FALSE}
+library('rGithubClient')
+library('gplots')
+library('randomForest')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+```
+
+
+## Filter and convert metadata
+```{r}
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+metadataFiltered$Sample_Type = as.character(metadataFiltered$Sample_Type)
+metadataFiltered$Sample_Type[grep("Coronal",metadataFiltered$Sample_Type)] = "Coronal"
+metadataFiltered$Sample_Type[grep("Metopic",metadataFiltered$Sample_Type)] = "Metopic"
+metadataFiltered$Sample_Type[grep("Sagittal",metadataFiltered$Sample_Type)] = "Sagittal"
+
+controlSamples = which(metadataFiltered$Sample_Type == "Control")
+metadataFiltered = metadataFiltered[-controlSamples,]
+metadataFiltered$Sample_Type = as.factor(metadataFiltered$Sample_Type)
+```
+
+
+```{r}
+phenoProfileGroups=function(inClass){
+  # Look at distribution of sex among groups
+  sexPerGroup = data.frame(as.factor(inClass))
+  rownames(sexPerGroup) = names(inClass)
+  sexPerGroup[,2] = metadataFiltered$Sex[match(rownames(sexPerGroup), metadataFiltered$Px_Code)]
+  colnames(sexPerGroup) = c("class", "sex")
+  plot(sexPerGroup)
+    
+  # Look at AlkP and BrdU distribution among groups
+  AlkPPerGroup = data.frame(as.factor(inClass))
+  rownames(AlkPPerGroup) = names(inClass)
+  AlkPPerGroup[,2] = metadataFiltered$AlkP[match(rownames(AlkPPerGroup), metadataFiltered$Px_Code)]
+  colnames(AlkPPerGroup) = c("class", "AlkP")
+  boxplot(AlkP~class, data=AlkPPerGroup, col = "honeydew", xlab = "class", ylab = "AlkP", varwidth = TRUE)
+  
+  BrdUPerGroup = data.frame(as.factor(inClass))
+  rownames(BrdUPerGroup) = names(inClass)
+  BrdUPerGroup[,2] = metadataFiltered$BrdU[match(rownames(BrdUPerGroup), metadataFiltered$Px_Code)]
+  colnames(BrdUPerGroup) = c("class", "BrdU")
+  boxplot(BrdU~class,data=BrdUPerGroup,varwidth = TRUE, col = "honeydew", xlab = "class", ylab = "BrdU")
+  
+  
+  # Look at distribution of suture type among groups
+  suturePerGroup = data.frame(as.factor(inClass))
+  rownames(suturePerGroup) = names(inClass)
+  suturePerGroup[,2] = metadataFiltered$Sample_Type[match(rownames(suturePerGroup), metadataFiltered$Px_Code)]
+  colnames(suturePerGroup) = c("class", "suture")
+  plot(suturePerGroup)
+}
+```
+
+
+Look at expression of genes in IGF/Thyroid/Del-dup-osteo/Synostosis pathways among groups
+```{r}
+glEnt = synGet('syn3105988')
+CunninghamGL = read.csv(getFileLocation(glEnt))
+head(CunninghamGL)
+# adding ENSG IDs
+CunninghamGL[,6] = geneNames$ensembl_gene_id[match(CunninghamGL$X, geneNames$hgnc_symbol)]
+
+pathwayProfileGroups=function(inGeneSet="IGF1",inClass){
+  gsc = which(colnames(CunninghamGL) %in% inGeneSet)
+  pathwayExp = resid[(rownames(resid) %in% CunninghamGL$V6[CunninghamGL[,gsc]=="YES"]),colnames(resid) %in% names(inClass)]
+  classOrder = names(inClass[order(inClass)])
+  pathwayExp_ordered = pathwayExp[,match(colnames(pathwayExp),classOrder)]
+  colToPlot = rainbow(max(inClass))
+  heatmap.2(pathwayExp_ordered,Colv = FALSE,trace = "no", col = bluered,ColSideColors = colToPlot[sort(inClass)], main = inGeneSet,labRow = "")
+}
+```
+
+
+# Using a model that does not include sex, but does include IGDD
+```{r}
+residEntity = synGet('syn4893932')
+resid = data.matrix(read.delim(getFileLocation(residEntity),row.names=1))
+colnames(resid) = sub("X",replacement = "",x = colnames(resid))
+colnames(resid) = gsub("[.]",replacement = "-",x = colnames(resid))
+
+pamClusterEnt = synGet('syn4909551')
+load(getFileLocation(pamClusterEnt))
+
+phenoProfileGroups(inClass = results_pam[[11]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "IGF1",inClass = results_pam[[11]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "Thyroid",inClass = results_pam[[11]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "Synostosis",inClass = results_pam[[11]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = results_pam[[11]]$consensusClass)
+
+hcClusterEnt = synGet('syn4909550')
+load(getFileLocation(hcClusterEnt))
+
+phenoProfileGroups(inClass = results_hc[[19]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "IGF1",inClass = results_hc[[19]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "Thyroid",inClass = results_hc[[19]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "Synostosis",inClass = results_hc[[19]]$consensusClass)
+pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = results_hc[[19]]$consensusClass)
+```
+
+Pheno profile
+```{r}
+phenoProfileGroups(inClass = hc_selected_groups)
+pathwayProfileGroups(inGeneSet = "IGF1",inClass = hc_selected_groups)
+pathwayProfileGroups(inGeneSet = "Thyroid",inClass = hc_selected_groups)
+pathwayProfileGroups(inGeneSet = "Synostosis",inClass = hc_selected_groups)
+pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = hc_selected_groups)
+
+phenoProfileGroups(inClass = pam_selected_groups)
+pathwayProfileGroups(inGeneSet = "IGF1",inClass = pam_selected_groups)
+pathwayProfileGroups(inGeneSet = "Thyroid",inClass = pam_selected_groups)
+pathwayProfileGroups(inGeneSet = "Synostosis",inClass = pam_selected_groups)
+pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = pam_selected_groups)
+```
+
+
+Random forests only on variable genes
+```{r}
+# First on hierarchical clustering groups
+fitEnt = synGet('syn4893933')
+load(getFileLocation(fitEnt))
+hist(fit$sigma, col = "honeydew",breaks = 20)
+sum(fit$sigma > 2)
+sum(fit$sigma > 1.5)
+sum(fit$sigma > 3)
+sum(fit$sigma > 4)
+highvar2 = setdiff(names(fit$Amean)[which(fit$sigma > 2)], union(Xgenes[,1], Ygenes[,1]))
+
+
+
+highVarResid = resid[rownames(resid) %in% highvar2,colnames(resid) %in% names(hc_selected_groups)]
+dim(highVarResid)
+varGenesHC.rf = randomForest(x=t(highVarResid),y=as.factor(hc_selected_groups),importance=TRUE, proximity=TRUE, ntree=1000)
+impHC = round(importance(varGenesHC.rf), 2)
+varImpPlot(varGenesHC.rf)
+print(varGenesHC.rf)
+varGenesHC.centers = classCenter(x=t(highVarResid),label=as.factor(hc_selected_groups),prox=varGenesHC.rf$proximity)
+heatmap.2(varGenesHC.centers,labCol="",trace='n',col=bluered,scale='r')
+
+
+x = which(colnames(impHC) == "MeanDecreaseGini")
+op = par(mar=c(5,4,4,5)+.1)
+plot(sort(impHC[,x],decreasing = TRUE), ylab = "MeanDecreaseGini", xlab = "genes", main = "variable impHCortance",pch = 1,cex = .6)
+par(new=TRUE)
+y = which(colnames(impHC) == "MeanDecreaseAccuracy")
+plot(sort(impHC[,y],decreasing = TRUE),  pch = 1,cex = .6, col = "green",axes = F,ylab= '',xlab='')
+axis(4,col = "green")
+mtext("MeanDecreaseAccuracy",side=4,line=3,col="green")
+par(op)
+abline(v = 250,lty = 2,col = "red")
+
+head(impHC)
+HCgeneNames = names(sort(impHC[,x],decreasing = TRUE))[1:250]
+write.table(HCgeneNames,file = "RFimpHCGenesHC_byGini.txt",quote = FALSE,sep = "\n",row.names = FALSE,col.names = FALSE)
+synStore(File(path = "RFimpHCGenesHC_byGini.txt",synapseStore = TRUE,parentId='syn4893931'))
+
+
+
+# Now using PAM groups
+highVarResid = resid[rownames(resid) %in% highvar2,colnames(resid) %in% names(pam_selected_groups)]
+dim(highVarResid)
+varGenesPam.rf = randomForest(x=t(highVarResid),y=as.factor(pam_selected_groups),importance=TRUE, proximity=TRUE, ntree=1000)
+impPam = round(importance(varGenesPam.rf), 2)
+varImpPlot(varGenesPam.rf)
+print(varGenesPam.rf)
+varGenesPam.centers = classCenter(x=t(highVarResid),label=as.factor(pam_selected_groups),prox=varGenesPam.rf$proximity)
+heatmap.2(varGenesPam.centers,labCol="",trace='n',col=bluered,scale='r')
+
+
+x = which(colnames(impPam) == "MeanDecreaseGini")
+op = par(mar=c(5,4,4,5)+.1)
+plot(sort(impPam[,x],decreasing = TRUE), ylab = "MeanDecreaseGini", xlab = "genes", main = "variable impPamortance",pch = 1,cex = .6)
+par(new=TRUE)
+y = which(colnames(impPam) == "MeanDecreaseAccuracy")
+plot(sort(impPam[,y],decreasing = TRUE),  pch = 1,cex = .6, col = "green",axes = F,ylab= '',xlab='')
+axis(4,col = "green")
+mtext("MeanDecreaseAccuracy",side=4,line=3,col="green")
+par(op)
+abline(v = 250,lty = 2,col = "red")
+
+head(impPam)
+write.table(names(sort(impPam[,x],decreasing = TRUE))[1:250],file = "RFimpPamGenesPam_byGini.txt",quote = FALSE,sep = "\n",row.names = FALSE,col.names = FALSE)
+synStore(File(path = "RFimpPamGenesPam_byGini.txt",synapseStore = TRUE,parentId='syn4893931'))
+
+venn(list(pam=names(sort(imp[,x],decreasing = TRUE))[1:250],HCgeneNames))
+```
+
+
+DE vs control per group (low power)
+```{r}
+# Subset metadata and prepare model
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+metadataFiltered$Sample_Type = as.character(metadataFiltered$Sample_Type)
+metadataFiltered$Sample_Type[grep("Coronal",metadataFiltered$Sample_Type)] = "Coronal"
+metadataFiltered$Sample_Type[grep("Metopic",metadataFiltered$Sample_Type)] = "Metopic"
+metadataFiltered$Sample_Type[grep("Sagittal",metadataFiltered$Sample_Type)] = "Sagittal"
+
+subsetSamples = c(as.character(names(hc_selected_groups)),as.character(metadata$Px_Code[metadata$caseStatus=="control"]))
+subsetMeta = metadata[metadata$Px_Code %in% subsetSamples,]
+dim(subsetMeta)
+subsetMeta$cluster = hc_selected_groups[match(subsetMeta$Px_Code,names(hc_selected_groups))]
+subsetMeta$cluster[is.na(subsetMeta$cluster)] = "control"
+subsetMeta$cluster = hc_selected_groups[match(subsetMeta$Px_Code,names(hc_selected_groups))]
+#tempMeta$Sample_Type = as.factor(as.character(tempMeta$Sample_Type))
+subsetMeta = subsetMeta[-which(is.na(subsetMeta$PCT_CORRECT_STRAND_READS)),]
+expandedMinimal = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days","caseStatus","cluster")
+tempModel = model.matrix(as.formula(paste("~",paste(expandedMinimal,collapse = "+"),sep = "")), data = subsetMeta)
+rownames(tempModel) = subsetMeta$Px_Code
+dim(tempModel)
+
+
+
+# Subset data and run
+dataEntity = synGet('syn2820309') 
+estReads = read.csv(getFileLocation(dataEntity), row.names = 1)
+colnames(estReads) = metadata$Px_Code[match(colnames(estReads), paste("X", metadata$SAMPLE,sep = ""))]
+data.dge = DGEList(counts=estReads,remove.zeros=TRUE)
+
+outlierTable = synTableQuery('SELECT * FROM syn3354503')
+outlierData = outlierTable@values
+noOutliers.dge = data.dge[,-which(colnames(data.dge) %in% outlierData$minimalSet)]
+
+## Protein-coding genes, PALX=20%
+proteinCoding_genes = getByBiotype()
+b = as.list(rownames(noOutliers.dge))
+strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})  
+pc.dge = noOutliers.dge[which(strippedNames %in% proteinCoding_genes[,1]),]
+pc_palo.dge = DGEList(counts = getCounts(pc.dge),group = pc.dge$samples$group)
+pc_palx20.dge = filterByFractionPresent(pc_palo.dge,fraction=0.20,minCount=3)
+pc_palx20.dge = calcNormFactors(pc_palx20.dge)
+subset.dge = pc_palx20.dge[,colnames(pc_palx20.dge) %in% subsetSamples]
+dim(subset.dge)
+z = setdiff(rownames(tempModel),colnames(subset.dge))
+tempModel = tempModel[-which(rownames(tempModel) == z),]
+tempModelReorder = tempModel[match(colnames(subset.dge),rownames(tempModel),),]
+dim(tempModelReorder)
+head(rownames(tempModelReorder))
+head(tempModelReorder)
+head(colnames(subset.dge))
+
+data.voom = voom(subset.dge,tempModelReorder,plot=FALSE) 
+fit = lmFit(data.voom,tempModelReorder)
+```

@@ -1,0 +1,211 @@
+---
+title: "clustering_vargenes_nosex_model.Rmd"
+author: "Kristen Dang"
+date: "August 17, 2015"
+output: html_document
+---
+
+
+```{r message=FALSE,warning=FALSE}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+```
+
+```{r message=FALSE}
+library('gplots')
+library('MASS')
+library(ConsensusClusterPlus)
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+setwd('~/Computing/cranio/')
+cutoff = 0.05
+```
+
+
+## Get filtered, residualized, case-only dataset
+### Using residuals of model that does NOT include AlkP or sample_type
+```{r}
+residEntity = synGet('syn4893932')
+resid = data.matrix(read.delim(getFileLocation(residEntity),row.names=1))
+boxplot(resid,outline = FALSE)
+resid.cor = as.dist(cor(resid))
+resid_mc = sweep(resid,1, apply(resid,1,median,na.rm=T)) # median-center
+hist(cor(resid))
+hist(cor(resid_mc))
+
+colnames(resid) = sub("X",replacement = "",x = colnames(resid))
+colnames(resid) = gsub("[.]",replacement = "-",x = colnames(resid))
+```
+
+
+## Identify variable genes, exclude sex-chromosome genes
+```{r}
+Ygenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="Y", mart=Hs)
+Xgenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="X", mart=Hs)
+detach("package:lubridate", unload=TRUE)
+
+
+dim(resid)
+fitEnt = synGet('syn4893933')
+load(getFileLocation(fitEnt))
+hist(fit$sigma, col = "honeydew",breaks = 20)
+truehist(fit$sigma, col = "honeydew")
+sum(fit$sigma > 2)
+sum(fit$sigma > 1.5)
+sum(fit$sigma > 3)
+sum(fit$sigma > 4)
+highvar2 = setdiff(names(fit$Amean)[which(fit$sigma > 2)], union(Xgenes[,1], Ygenes[,1]))
+highvar1.5 = setdiff(names(fit$Amean)[which(fit$sigma > 1.5)], union(Xgenes[,1], Ygenes[,1]))
+highvar3 = setdiff(names(fit$Amean)[which(fit$sigma > 3)], union(Xgenes[,1], Ygenes[,1]))
+highvar4 = setdiff(names(fit$Amean)[which(fit$sigma > 4)], union(Xgenes[,1], Ygenes[,1]))
+
+
+```
+
+
+## consensus clustering
+```{r echo=TRUE,eval=FALSE}
+setwd('/Users/kristen/Computing/cranio/consensus_cluster_genes/alt_age_IGDD_model/')
+results_hc = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "hc",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_hc_high2_spear_pF9")
+save(results_hc,file = "variable_genes_results_hc.Robj.bz2",compress = "bzip2")
+test = results_hc[1:20]
+test2 = calcICL(test,title = 'variable_genes_results_hc_k9h2',plot = 'pdf',writeTable = TRUE)
+
+results_hc = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "hc",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_hc_high4_spear_pF5")
+save(results_hc,file = "variable_genes_results_hc_p5hv4.Robj.bz2",compress = "bzip2")
+results_hc = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "hc",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_hc_high15_spear_pF9")
+save(results_hc,file = "variable_genes_results_hc_p9hv15.Robj.bz2",compress = "bzip2")
+results_hc = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "hc",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_hc_high2_spear_pF7")
+save(results_hc,file = "variable_genes_results_hc_p7hv2.Robj.bz2",compress = "bzip2")
+
+# varying number input genes
+# pFeature = 0.7
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high15_spear_pF7") 
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high2_spear_pF7") 
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high4_spear_pF7") 
+
+
+# pFeature = 0.9
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high15_spear_pF9") 
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar2),],maxK = 35,reps = 5000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high2_spear_pF9_5krep") 
+save(results_pam,file = "variable_genes_results_pam_k9h2_5kreps.Robj.bz2",compress = "bzip2")
+test = results_pam[1:20]
+test2 = calcICL(test,title = 'variable_genes_results_pam_k9hr5k2',plot = 'pdf',writeTable = TRUE)
+
+
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high4_spear_pF9") 
+save(results_pam,file = "variable_genes_results_pam_p9hv4.Robj.bz2",compress = "bzip2")
+
+# pFeature = 0.5
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high15_spear_pF5") 
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high2_spear_pF5") 
+results_pam = ConsensusClusterPlus(d=resid[(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high4_spear_pF5") 
+```
+
+
+## Compare groups
+```{r}
+# Joint heatmap of hclust consensus and pclust consensus
+load("/Users/kristen/Computing/cranio/consensus_cluster_genes/alt_age_IGDD_model/variable_genes_results_hc.Robj.bz2")
+load('/Users/kristen/Computing/cranio/consensus_cluster_genes/alt_age_IGDD_model/variable_genes_results_pam_k9h2_5kreps.Robj.bz2')
+
+varGenes_combined.classes = cbind(results_hc[[19]]$consensusClass,results_pam[[11]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+varGenes_ordered = varGenes_combined.classes[order(varGenes_combined.classes[,1]),]
+heatmap(varGenes_ordered, col = rainbow(19),Colv = NA,scale = "none",margins = c(3,3),cexCol = 1,Rowv = NA)
+varGenes_ordered = varGenes_combined.classes[order(varGenes_combined.classes[,2]),]
+heatmap(varGenes_ordered, col = rainbow(19),Colv = NA,scale = "none",margins = c(3,3),cexCol = 1,Rowv = NA)
+```
+
+
+# Identify well-defined groups
+```{r}
+# From pam results
+pamICI = read.csv('/Users/kristen/Computing/cranio/consensus_cluster_genes/alt_age_IGDD_model/variable_genes_results_pam_k9hr5k/variable_genes_results_pam_k9hr5k2.summary.cluster.consensus.csv')
+selected = pamICI[pamICI$k == 11,]
+barplot(selected$clusterConsensus,names.arg = seq(1,11))
+abline(0.75,0,col = "red", lty = 2)
+selectedGroups = which(selected$clusterConsensus > 0.74)
+pamSamplesInSelectedGroups = names(results_pam[[11]]$consensusClass[results_pam[[11]]$consensusClass %in% selectedGroups])
+pam_selected_groups = results_hc[[19]]$consensusClass[results_hc[[19]]$consensusClass %in% selectedGroups]
+write.table(pam_selected_groups,file = "pam_selected_groups.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = FALSE)
+synStore(File(path = "pam_selected_groups.tsv",parentId='syn4893931'))
+
+# From hclust results
+hcICI = read.csv('/Users/kristen/Computing/cranio/consensus_cluster_genes/alt_age_IGDD_model/variable_genes_results_hc_k9h2/variable_genes_results_hc_k9h2.summary.cluster.consensus.csv')
+selected = hcICI[hcICI$k == 19,]
+barplot(selected$clusterConsensus,names.arg = seq(1,19))
+abline(0.75,0,col = "red", lty = 2)
+selectedGroups = which(selected$clusterConsensus > 0.74)
+hcSamplesInSelectedGroups = names(results_hc[[19]]$consensusClass[results_hc[[19]]$consensusClass %in% selectedGroups])
+hc_selected_groups = results_hc[[19]]$consensusClass[results_hc[[19]]$consensusClass %in% selectedGroups]
+write.table(hc_selected_groups,file = "hc_selected_groups.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = FALSE)
+synStore(File(path = "hc_selected_groups.tsv",parentId='syn4893931'))
+
+```
+
+
+Eliminate genes with very low expression, try clustering again. 
+(Results show little difference in clustering.)
+```{r eval=FALSE}
+dataEnt = synGet('syn4738853')
+load(getFileLocation(dataEnt))
+
+hist(cpm(in.dge,normalized.lib.sizes = TRUE,log = TRUE))
+depthNorm = cpm(in.dge,normalized.lib.sizes = TRUE,log = TRUE)
+lowGenes = apply(depthNorm,MARGIN = 1,function(z){length(which(z < 0))})
+hist(lowGenes/202,breaks = 400,xlim = c(0.8,1),ylim = c(0,2000))
+length(which(lowGenes/202 > 0.97 ))
+filtered.dge = in.dge[-which(lowGenes/202 > 0.97 ),]
+
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+metadataFiltered$Sample_Type = as.character(metadataFiltered$Sample_Type)
+metadataFiltered$Sample_Type[grep("Coronal",metadataFiltered$Sample_Type)] = "Coronal"
+metadataFiltered$Sample_Type[grep("Metopic",metadataFiltered$Sample_Type)] = "Metopic"
+metadataFiltered$Sample_Type[grep("Sagittal",metadataFiltered$Sample_Type)] = "Sagittal"
+metadataFiltered$Sample_Type = as.factor(metadataFiltered$Sample_Type)
+minimalSetNoSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
+
+caseMeta = metadataFiltered[-which(metadataFiltered$Sample_Type == "Control"),]
+dim(caseMeta)
+tempMeta = caseMeta[caseMeta$Px_Code %in% colnames(filtered.dge),]
+dim(tempMeta)
+
+## Run model and get residuals
+tempMeta$Sample_Type = as.factor(as.character(tempMeta$Sample_Type))
+tempModel = model.matrix(as.formula(paste("~",paste(minimalSetNoSex,collapse = "+"),sep = "")), data = tempMeta)
+
+data.voom = voom(filtered.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+save(fit,file = "resid_cases_pIGDD_nolow_fit.Robj.bz2",compress = "bzip2")
+resid_nolow = residuals(fit,y = data.voom)
+write.table(formatC(resid,digits=6,format="fg"),file = "scri-cran_resid_cases_pIGDD_nolow.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = TRUE)
+
+## Save data to Synapse
+synStore(File(path = "scri-cran_resid_cases_pIGDD_nolow.tsv",parentId='syn4893931'))
+synStore(File(path = "resid_cases_pIGDD_nolow_fit.Robj.bz2",parentId='syn4893931'))
+
+
+dim(resid_nolow)
+hist(resid_nolow)
+hist(fit$sigma, col = "honeydew",breaks = 20)
+truehist(fit$sigma, col = "honeydew")
+sum(fit$sigma > 2)
+sum(fit$sigma > 1.5)
+sum(fit$sigma > 3)
+sum(fit$sigma > 4)
+highvar2 = setdiff(names(fit$Amean)[which(fit$sigma > 2)], union(Xgenes[,1], Ygenes[,1]))
+highvar1.5 = setdiff(names(fit$Amean)[which(fit$sigma > 1.5)], union(Xgenes[,1], Ygenes[,1]))
+highvar3 = setdiff(names(fit$Amean)[which(fit$sigma > 3)], union(Xgenes[,1], Ygenes[,1]))
+highvar4 = setdiff(names(fit$Amean)[which(fit$sigma > 4)], union(Xgenes[,1], Ygenes[,1]))
+
+results_hc = ConsensusClusterPlus(d=resid_nolow[(rownames(resid_nolow) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "hc",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_hc_h2_spear_pF9_nolow") # no qualitative difference from including all genes.
+save(results_hc,file = "variable_genes_results_hch2p9_nolow.Robj.bz2",compress = "bzip2")
+test = results_hc[1:25]
+test2 = calcICL(test,title = 'variable_genes_results_hck9h2_nolow',plot = 'pdf',writeTable = TRUE)
+
+
+results_pam = ConsensusClusterPlus(d=resid_nolow[(rownames(resid_nolow) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_h2_spear_pF9_nolow") 
+save(results_pam,file = "variable_genes_results_pamk9h2_nolow.Robj.bz2",compress = "bzip2")
+test = results_pam[1:20]
+test2 = calcICL(test,title = 'variable_genes_results_pam_k9hr_nolow',plot = 'pdf',writeTable = TRUE)

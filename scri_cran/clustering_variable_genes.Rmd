@@ -1,0 +1,274 @@
+---
+title: "consensus_clustering_variable_genes.Rmd"
+author: "Kristen Dang"
+date: "June 18, 2015"
+output: html_document
+---
+
+
+```{r message=FALSE,warning=FALSE}
+library('rGithubClient')
+library('gplots')
+library('MASS')
+library(ConsensusClusterPlus)
+
+
+token = read.delim('~/Movies/rGHclient_token.txt',header = FALSE)
+setGithubToken(as.character(token[1,1]))
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+proteinCoding_genes = getByBiotype()
+setwd('~/Computing/cranio/')
+
+cutoff = 0.05
+
+```
+
+
+
+## Get filtered, residualized, case-only dataset
+### Using residuals of model that does NOT include AlkP or sample_type
+```{r}
+residEntity = synGet('syn4586436')
+resid = read.delim(getFileLocation(residEntity),row.names=1)
+boxplot(resid,outline = FALSE)
+resid.cor = as.dist(cor(resid))
+resid_mc = sweep(resid,1, apply(resid,1,median,na.rm=T)) # makes no difference to consensus cluster using PAM
+hist(cor(resid))
+hist(cor(resid_mc))
+
+colnames(resid) = sub("X",replacement = "",x = colnames(resid))
+colnames(resid) = gsub("[.]",replacement = "-",x = colnames(resid))
+```
+
+
+## Identify variable genes
+```{r}
+dim(resid)
+fitEnt = synGet('syn4636650')
+load(getFileLocation(fitEnt))
+hist(fit$sigma, col = "honeydew",breaks = 20)
+truehist(fit$sigma, col = "honeydew")
+sum(fit$sigma > 2)
+sum(fit$sigma > 1.5)
+sum(fit$sigma > 3)
+sum(fit$sigma > 4)
+highvar2 = names(fit$Amean)[which(fit$sigma > 2)]
+highvar1.5 = names(fit$Amean)[which(fit$sigma > 1.5)]
+highvar3 = names(fit$Amean)[which(fit$sigma > 3)]
+highvar4 = names(fit$Amean)[which(fit$sigma > 4)]
+```
+
+
+## consensus clustering
+```{r echo=TRUE,eval=FALSE}
+setwd('~/Computing/cranio/consensus_cluster_genes/')
+plot(1, main = "HC consensus")
+results_hc = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "hc",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_hc_high2_spear_pF9")
+save(results_hc,file = "variable_genes_results_hc.Robj.bz2",compress = "bzip2")
+
+# varying number input genes
+# pFeature = 0.7
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high15_spear_pF7") # strongly supports 2 groups
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high2_spear_pF7") # strongly supports 2 groups
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high4_spear_pF7") # strongly supports 2 groups
+
+
+# pFeature = 0.9
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high15_spear_pF9") # strongly supports 2 groups
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high2_spear_pF9") # strongly supports 2 groups
+save(results_pam,file = "variable_genes_results_pam.Robj.bz2",compress = "bzip2")
+
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.9,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high4_spear_pF9") # strongly supports 2 groups
+
+
+# pFeature = 0.5
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar1.5),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high15_spear_pF5") # strongly supports 2 groups
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar2),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high2_spear_pF5") # strongly supports 2 groups
+results_pam = ConsensusClusterPlus(d=resid[which(rownames(resid) %in% highvar4),],maxK = 35,reps = 1000,clusterAlg = "pam",distance = "spearman",pFeature = 0.5,writeTable=TRUE,plot="pdf",title="consCluster_resid_pam_high4_spear_pF5") # strongly supports 2 groups
+```
+
+
+## Compare groups
+```{r}
+# Joint heatmap of hclust consensus and pclust consensus
+load("~/Computing/cranio/variable_genes_results_hc.Robj.bz2")
+load('~/Computing/cranio/variable_genes_results_pam.Robj.bz2')
+
+varGenes_combined.classes = cbind(results_hc[[2]]$consensusClass,results_pam[[2]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+heatmap(varGenes_combined.classes, col = rainbow(2),Colv = NA,scale = "none",margins = c(3,3),cexCol = 1)
+
+varGenes_combined.classes = cbind(results_hc[[7]]$consensusClass,results_pam[[7]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+heatmap(varGenes_combined.classes, col = rainbow(7),Colv = NA,scale = "none",margins = c(3,3),cexCol = 1)
+
+varGenes_combined.classes = cbind(results_hc[[11]]$consensusClass,results_pam[[11]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+heatmap(varGenes_combined.classes, col = rainbow(11),Colv = NA,scale = "none",margins = c(3,3),cexCol = 1)
+
+varGenes_combined.classes = cbind(results_hc[[15]]$consensusClass,results_pam[[15]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+heatmap(varGenes_combined.classes, col = rainbow(15),Colv = NA,scale = "none",margins = c(3,3),cexCol = 1)
+```
+
+
+
+
+## Check whether this grouping corresponds to any metadata
+```{r}
+varGenes_combined.classes = cbind(results_hc[[2]]$consensusClass,results_pam[[2]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+
+# Make case metadata object
+caseMeta = metadata[metadata$Px_Code %in% colnames(resid), ]
+caseMeta$Sample_Type = as.character(caseMeta$Sample_Type)
+caseMeta$Sample_Type[grep("Coronal",caseMeta$Sample_Type)] = "Coronal"
+caseMeta$Sample_Type[grep("Metopic",caseMeta$Sample_Type)] = "Metopic"
+caseMeta$Sample_Type[grep("Sagittal",caseMeta$Sample_Type)] = "Sagittal"
+caseMeta$Sample_Type = as.factor(caseMeta$Sample_Type)
+
+
+
+# Enriched for sample type?
+table(caseMeta$Sample_Type[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(1))))])
+table(caseMeta$Sample_Type[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(2))))])
+x = as.vector(table(caseMeta$Sample_Type[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(1))))]))
+y = rbind(x, as.vector(table(caseMeta$Sample_Type[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(2))))])))
+chisq.test(as.numeric(y),simulate.p.value = TRUE)
+
+
+# library Batch
+table(caseMeta$libraryBatch[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(1))))])
+table(caseMeta$libraryBatch[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(2))))])
+
+# Sample Origin
+table(caseMeta$Sample_Origin[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(1))))])
+table(caseMeta$Sample_Origin[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(2))))])
+
+# Sex
+table(caseMeta$Sex[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(1))))])
+table(caseMeta$Sex[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(2))))])
+
+
+# Scan Date
+table(caseMeta$ScanDate[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(1))))])
+table(caseMeta$ScanDate[which(caseMeta$Px_Code %in% names(which(varGenes_combined.classes[,2] == as.factor(2))))])
+
+
+```
+
+
+## Characterize groups, for 2 groups
+```{r}
+# Using random forest, only on variable genes
+library('randomForest')
+x = resid[which(rownames(resid) %in% highvar2),]
+varGenes.rf = randomForest(x=t(x),y=as.factor(varGenes_combined.classes[,2]),importance=TRUE, proximity=TRUE, ntree=1000)
+imp = round(importance(varGenes.rf), 2)
+barplot(abs(imp[order(abs(imp[,3]),decreasing=TRUE),3]), las = 2, main = "MeanDecAcc",names.arg = "")
+barplot(imp[order(abs(imp[,3]),decreasing=TRUE),3], las = 2, main = "MeanDecAcc",names.arg = "")
+barplot(imp[order(imp[,4],decreasing=TRUE),4], las = 2, main = "IncNodePurity",names.arg = "") 
+varImpPlot(varGenes.rf)
+varImpPlot(varGenes.rf,n.var = 150)
+print(varGenes.rf)
+varGenes.centers = classCenter(x=t(x),label=as.factor(varGenes_combined.classes[,2]),prox=varGenes.rf$proximity)
+heatmap.2(varGenes.centers,labCol="",trace='n',col=bluered,scale='r')
+
+head(imp)
+length(which(imp[,3] > 4))
+names(which(imp[,3] > 4))
+write.table(rownames(imp),file = "vargenes_list.txt",quote = FALSE,sep = "\n",row.names = FALSE,col.names = FALSE)
+
+# Standard DE of 2 groups, using all PALX20 genes
+# starting with residuals of previous model
+groupStatus = as.factor(varGenes_combined.classes[,2])
+minimalSet = c("Sex","Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES")
+tempModel = model.matrix(~groupStatus)
+fit = lmFit(resid,tempModel)
+fit = eBayes(fit)
+DEgeneTable = topTable(fit,coef = "groupStatus2",number = nrow(resid))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 0.01]
+xStatus = as.numeric(rownames(fit) %in% xSig)
+plotMA(fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"),values=c(0,1))
+
+# starting with full model, including groupStatus with it 
+tempMeta = caseMeta
+tempMeta$Sample_Type = as.factor(as.character(tempMeta$Sample_Type))
+tempModel = model.matrix(as.formula(paste("~groupStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = tempMeta)
+dgeEnt = synGet('syn4738853')
+load(getFileLocation(dgeEnt))
+data.voom = voom(in.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+fit = eBayes(fit)
+DEgeneTable = topTable(fit,coef = "groupStatus2",number = nrow(resid))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 0.01]
+xStatus = as.numeric(rownames(fit) %in% xSig)
+plotMA(fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"),coef = "groupStatus2",values=c(0,1))
+
+
+# starting with full model, including groupStatus with it, using only variable genes
+tempModel = model.matrix(as.formula(paste("~groupStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = tempMeta)
+vargenes.dge = in.dge[which(rownames(in.dge) %in% highvar2),]
+data.voom = voom(vargenes.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+fit = eBayes(fit)
+DEgeneTable = topTable(fit,coef = "groupStatus2",number = nrow(resid))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < 0.01]
+xStatus = as.numeric(rownames(fit) %in% xSig)
+plotMA(fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black", "green3"),coef = "groupStatus2",values=c(0,1))
+```
+
+
+# simulation -- are there other 2-group assignments with as many significant genes?
+```{r echo=TRUE, eval=FALSE}
+simSig = rep(NA,1000)
+for (i in 1:1000) {
+  simStatus = as.factor(rbinom(n = 202,size = 1,prob = 0.5)+1)
+  tempModel = model.matrix(as.formula(paste("~simStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = tempMeta)
+  data.voom = voom(vargenes.dge,tempModel,plot=FALSE) 
+  fit = lmFit(data.voom,tempModel)
+  fit = eBayes(fit)
+  DEgeneTable = topTable(fit,coef = "simStatus2",number = nrow(vargenes.dge))
+  simSig[i] = length(which(DEgeneTable$adj.P.Val < 0.01))
+}
+pdf(file = "hist_sig-genes_random2grp.pdf")
+hist(simSig, breaks = 20, col = "lawngreen", main = "number of sig genes\nfor random 2 group assignment", xlab = "number of significant genes")
+dev.off()
+
+```
+
+
+
+## Characterize for 10 groups
+```{r}
+varGenes_combined.classes = cbind(results_hc[[10]]$consensusClass,results_pam[[10]]$consensusClass)
+colnames(varGenes_combined.classes) = c("hierarchy", "partition")
+
+
+# Using random forest, only on variable genes
+x = resid[which(rownames(resid) %in% highvar2),]
+varGenes.rf = randomForest(x=t(x),y=as.factor(varGenes_combined.classes[,2]),importance=TRUE, proximity=TRUE, ntree=1000)
+imp = round(importance(varGenes.rf), 2)
+barplot(abs(imp[order(abs(imp[,3]),decreasing=TRUE),3]), las = 2, main = "MeanDecAcc",names.arg = "")
+barplot(imp[order(abs(imp[,3]),decreasing=TRUE),3], las = 2, main = "MeanDecAcc",names.arg = "")
+barplot(imp[order(imp[,4],decreasing=TRUE),4], las = 2, main = "IncNodePurity",names.arg = "") 
+varImpPlot(varGenes.rf)
+varImpPlot(varGenes.rf,n.var = 150)
+print(varGenes.rf)
+varGenes.centers = classCenter(x=t(x),label=as.factor(varGenes_combined.classes[,2]),prox=varGenes.rf$proximity)
+heatmap.2(varGenes.centers,labCol="",trace='n',col=bluered,scale='r')
+
+head(imp)
+length(which(imp[,11] > 3))
+write.table(rownames(imp),file = "vargenes_list_10grp_gt3.txt",quote = FALSE,sep = "\n",row.names = FALSE,col.names = FALSE)
+
+
+# How are the 2 groups distributed in the 10 groups?
+twoGroupSplit = cbind(results_pam[[2]]$consensusClass, results_pam[[10]]$consensusClass)
+pie(table(twoGroupSplit[,2]))
+for (i in 1:10){
+  print(paste("group", i, sep = " "))
+  print(table(twoGroupSplit[which(twoGroupSplit[,2] == i),1]))
+}
+```
