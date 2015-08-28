@@ -18,15 +18,14 @@ lookup = read.csv(getFileLocation(lookupEnt))
 
 clinicalEnt = synGet("syn2731158")
 clinical = read.csv(getFileLocation(clinicalEnt))
-clinical$SampleID = unlist(lapply(as.character(clinical$File),function(x){strsplit(x=x,split=" ")[[1]][3]}))
-
-noMatch = which(is.na(match(lookup$UDF.Investigator.Sample.Name, clinical$SampleID)))
+noMatch = which(is.na(match(lookup$UDF.Investigator.Sample.Name, clinical$Px.Code)))
 lookup[noMatch,]
 
 lookupRev = lookup
 lookupRev$UDF.Investigator.Sample.Name = as.character(lookup$UDF.Investigator.Sample.Name)
-lookupRev$UDF.Investigator.Sample.Name = replace(x=lookupRev$UDF.Investigator.Sample.Name, list=noMatch, values=c("AUT5", "AUT6", "AUT7", "1071", "1059", "1075"))
-noMatch2 = which(is.na(match(lookupRev$UDF.Investigator.Sample.Name, clinical$SampleID)))
+lookupRev$UDF.Investigator.Sample.Name = replace(x=lookupRev$UDF.Investigator.Sample.Name, list=noMatch, values=c("1071", "1059", "1075"))
+noMatch2 = which(is.na(match(lookupRev$UDF.Investigator.Sample.Name, clinical$Px.Code)))
+rm(noMatch, noMatch2, lookup, lookupEnt)
 ```
 
 Which ones are case/control?
