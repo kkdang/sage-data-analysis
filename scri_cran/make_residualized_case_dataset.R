@@ -6,9 +6,7 @@
 # ---
 
 library('rGithubClient')
-token = read.delim('~/Movies/rGHclient_token.txt',header = FALSE)
-setGithubToken(as.character(token[1,1]))
-sageCode = getRepo(repository="kkdang/sage-data-analysis")
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
 setwd('~/Computing/cranio/')
 
