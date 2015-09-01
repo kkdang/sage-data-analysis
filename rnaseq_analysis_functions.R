@@ -156,7 +156,7 @@ runGoseq=function(lrt,pcutoff=0.05){
 calculateDE=function(in.fit,inContrast,plotTitle=modelName,pcutoff=0.05,goseq=FALSE,limma=FALSE,inCoef){
   if (limma){
     fit = eBayes(in.fit)
-    if (inContrast) {
+    if (max(inContrast) > 0) {
       fitContrast = eBayes(contrasts.fit(fit, inContrast))
       result = topTable(fitContrast,number = 10000,sort.by = "p")
       x = length(which(result$adj.P.Val<pcutoff))
