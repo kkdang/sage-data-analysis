@@ -209,3 +209,4 @@ results_pam = ConsensusClusterPlus(d=resid_nolow[(rownames(resid_nolow) %in% hig
 save(results_pam,file = "variable_genes_results_pamk9h2_nolow.Robj.bz2",compress = "bzip2")
 test = results_pam[1:20]
 test2 = calcICL(test,title = 'variable_genes_results_pam_k9hr_nolow',plot = 'pdf',writeTable = TRUE)
+```
