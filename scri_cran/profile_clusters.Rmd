@@ -9,6 +9,7 @@ output: html_document
 library('rGithubClient')
 library('gplots')
 library('randomForest')
+library("VennDiagram")
 source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
 ```
@@ -62,7 +63,7 @@ phenoProfileGroups=function(inClass){
 ```
 
 
-Look at expression of genes in IGF/Thyroid/Del-dup-osteo/Synostosis pathways among groups
+Function to look at expression of genes in IGF/Thyroid/Del-dup-osteo/Synostosis pathways among groups
 ```{r}
 glEnt = synGet('syn3105988')
 CunninghamGL = read.csv(getFileLocation(glEnt))
@@ -82,7 +83,7 @@ pathwayProfileGroups=function(inGeneSet="IGF1",inClass){
 
 
 # Using a model that does not include sex, but does include IGDD
-```{r}
+```{r echo=FALSE,eval=FALSE}
 residEntity = synGet('syn4893932')
 resid = data.matrix(read.delim(getFileLocation(residEntity),row.names=1))
 colnames(resid) = sub("X",replacement = "",x = colnames(resid))
@@ -109,11 +110,22 @@ pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = results_hc[[19]]$cons
 
 Pheno profile
 ```{r}
+hcEnt = synGet('syn4909512')
+temp = read.delim(getFileLocation(hcEnt),header = FALSE,row.names=1)
+hc_selected_groups = as.vector(temp[,1])
+names(hc_selected_groups) = rownames(temp)
+
 phenoProfileGroups(inClass = hc_selected_groups)
 pathwayProfileGroups(inGeneSet = "IGF1",inClass = hc_selected_groups)
 pathwayProfileGroups(inGeneSet = "Thyroid",inClass = hc_selected_groups)
 pathwayProfileGroups(inGeneSet = "Synostosis",inClass = hc_selected_groups)
 pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = hc_selected_groups)
+
+
+pamEnt = synGet('syn4909513')
+temp = read.delim(getFileLocation(pamEnt),header = FALSE,row.names=1)
+pam_selected_groups = as.vector(temp[,1])
+names(pam_selected_groups) = rownames(temp)
 
 phenoProfileGroups(inClass = pam_selected_groups)
 pathwayProfileGroups(inGeneSet = "IGF1",inClass = pam_selected_groups)
@@ -124,7 +136,7 @@ pathwayProfileGroups(inGeneSet = "Del.Dup_Osteo",inClass = pam_selected_groups)
 
 
 Random forests only on variable genes
-```{r}
+```{r eval=FALSE}
 # First on hierarchical clustering groups
 fitEnt = synGet('syn4893933')
 load(getFileLocation(fitEnt))
@@ -144,7 +156,7 @@ impHC = round(importance(varGenesHC.rf), 2)
 varImpPlot(varGenesHC.rf)
 print(varGenesHC.rf)
 varGenesHC.centers = classCenter(x=t(highVarResid),label=as.factor(hc_selected_groups),prox=varGenesHC.rf$proximity)
-heatmap.2(varGenesHC.centers,labCol="",trace='n',col=bluered,scale='r')
+heatmap.2(varGenesHC.centers,labCol="",trace='n',col=bluered,scale='r',dendrogram = "row")
 
 
 x = which(colnames(impHC) == "MeanDecreaseGini")
@@ -190,13 +202,24 @@ abline(v = 250,lty = 2,col = "red")
 head(impPam)
 write.table(names(sort(impPam[,x],decreasing = TRUE))[1:250],file = "RFimpPamGenesPam_byGini.txt",quote = FALSE,sep = "\n",row.names = FALSE,col.names = FALSE)
 synStore(File(path = "RFimpPamGenesPam_byGini.txt",synapseStore = TRUE,parentId='syn4893931'))
+```
 
-venn(list(pam=names(sort(imp[,x],decreasing = TRUE))[1:250],HCgeneNames))
+Compare RF results
+```{r}
+hcRFEnt = synGet('syn4913693')
+HCgeneNames = as.vector(read.delim(getFileLocation(hcRFEnt),header = FALSE)[,1])
+
+pamRFEnt = synGet('syn4913692')
+PAMgeneNames = as.vector(read.delim(getFileLocation(pamRFEnt),header = FALSE)[,1])
+
+venn(list(pam=PAMgeneNames,hc=HCgeneNames))
 ```
 
 
 DE vs control per group (low power)
 ```{r}
+cutoff = 0.05 
+
 # Subset metadata and prepare model
 metadataFiltered = processMetadata(ver = 5,plot = FALSE)
 metadataFiltered$Sample_Type = as.character(metadataFiltered$Sample_Type)
@@ -209,10 +232,9 @@ subsetMeta = metadata[metadata$Px_Code %in% subsetSamples,]
 dim(subsetMeta)
 subsetMeta$cluster = hc_selected_groups[match(subsetMeta$Px_Code,names(hc_selected_groups))]
 subsetMeta$cluster[is.na(subsetMeta$cluster)] = "control"
-subsetMeta$cluster = hc_selected_groups[match(subsetMeta$Px_Code,names(hc_selected_groups))]
 #tempMeta$Sample_Type = as.factor(as.character(tempMeta$Sample_Type))
 subsetMeta = subsetMeta[-which(is.na(subsetMeta$PCT_CORRECT_STRAND_READS)),]
-expandedMinimal = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days","caseStatus","cluster")
+expandedMinimal = c("0", "Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days","cluster")
 tempModel = model.matrix(as.formula(paste("~",paste(expandedMinimal,collapse = "+"),sep = "")), data = subsetMeta)
 rownames(tempModel) = subsetMeta$Px_Code
 dim(tempModel)
@@ -247,6 +269,344 @@ head(rownames(tempModelReorder))
 head(tempModelReorder)
 head(colnames(subset.dge))
 
+
+
+plotDotchart=function(inAccumulatedCounts){
+  par(mfrow = c(1,1))
+  inAccumulatedCounts
+  x = data.frame(inAccumulatedCounts)
+  print(x)
+  x$num_sig = as.numeric(as.character(x$num_sig))
+  dotchart(x[,2],labels=x$model,xlab = "number significant genes",bg="tomato",lcolor="tomato",cex=1.2)
+}
+
+computeFit=function(in.dge,design,inContrast=my.contrasts[,1],plotTitle=modelName,pval=cutoff){
+  data.voom = voom(in.dge,design,plot=FALSE)
+  fit = lmFit(data.voom,design)
+  testResults = calculateDE(in.fit=fit,inContrast=inContrast,pcutoff=pval,plotTitle=plotTitle,limma=TRUE)
+  DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+  xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < pval]
+  xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+  plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+  print(length(which(DEgeneTable$adj.P.Val<pval)))
+  return(DEgeneTable)
+}
+
 data.voom = voom(subset.dge,tempModelReorder,plot=FALSE) 
 fit = lmFit(data.voom,tempModelReorder)
+my.contrasts = makeContrasts(c2VScontrol = cluster2-clustercontrol, c3VScontrol = cluster3-clustercontrol, c4VScontrol = cluster4-clustercontrol, c5VScontrol = cluster5-clustercontrol, c9VScontrol = cluster9-clustercontrol, c10VScontrol = cluster10-clustercontrol, c13VScontrol = cluster13-clustercontrol, c14VScontrol = cluster14-clustercontrol, levels=tempModelReorder)
+#groupResiduals = residuals(fit,y=data.voom)
+
+accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
+accumulatedResults = matrix(NA,nrow = nrow(subset.dge),ncol = 1,dimnames = list(rownames(subset.dge),c("default")))
+DEgeneLists = list()
+DEfits = list()
+
+modelName = "cluster2-control"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(subset.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"),coef = 1,values = c(0,1))
+DEgeneLists[[1]] = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val<cutoff),which(DEgeneTable$logFC > 1.5))]
+names(DEgeneLists)[[1]] = modelName
+DEfits[[1]] = testResults$fit
+names(DEfits)[[1]] = modelName
+
+
+modelName = "cluster4-control"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,3],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(subset.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"),coef = 1,values = c(0,1))
+DEgeneLists[[2]] = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val<cutoff),which(DEgeneTable$logFC > 1.5))]
+names(DEgeneLists)[[2]] = modelName
+DEfits[[2]] = testResults$fit
+names(DEfits)[[2]] = modelName
+
+
+modelName = "cluster9-control"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,5],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(subset.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"),coef = 1,values = c(0,1))
+DEgeneLists[[3]] = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val<cutoff),which(DEgeneTable$logFC > 1.5))]
+names(DEgeneLists)[[3]] = modelName
+DEfits[[3]] = testResults$fit
+names(DEfits)[[3]] = modelName
+
+
+modelName = "cluster13-control"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,7],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
+DEgeneTable = topTable(testResults$fit,number = nrow(subset.dge))
+xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"),coef = 1,values = c(0,1))
+DEgeneLists[[4]] = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val<cutoff),which(DEgeneTable$logFC > 1.5))]
+names(DEgeneLists)[[4]] = modelName
+DEfits[[4]] = testResults$fit
+names(DEfits)[[4]] = modelName
+
+save(DEgeneLists,file = "DEgeneLists.Robj.bz2",compress = "bzip2")
+synStore(File(path = "DEgeneLists.Robj.bz2",synapseStore = TRUE,parentId="syn4893931"))
 ```
+
+Summary
+```{r}
+accumulatedCounts = accumulatedCounts[-1,]
+plotDotchart(inAccumulatedCounts = accumulatedCounts)
+venn.diagram(list(clus2=DEgeneLists$'cluster2-control',clus4=DEgeneLists$'cluster4-control',clus9=DEgeneLists$'cluster9-control',clust13=DEgeneLists$'cluster13-control'),filename="venn_cluster-control_DE.tiff",fill = c("thistle2","cornsilk2","honeydew","paleturquoise3"))
+
+
+venn.diagram(list(clus2=DEgeneLists$'cluster2-control',clus4=DEgeneLists$'cluster4-control',randforest=HCgeneNames,clust13=DEgeneLists$'cluster13-control'),filename="venn_cluster-RF_DE.tiff",fill = c("thistle2","khaki","orange","lightsteelblue"))
+
+venn.diagram(list(clus2=DEgeneLists$'cluster2-control',randforest=HCgeneNames,clus9=DEgeneLists$'cluster9-control',clust13=DEgeneLists$'cluster13-control'),filename="venn_cluster-RF2_DE.tiff",fill = c("thistle2","khaki","orange","lightsteelblue"))
+```
+
+MeSH over-representation analysis
+```{r message=FALSE}
+detach("package:lubridate", unload=TRUE)
+detach("package:randomForest", unload=TRUE)
+library('meshr')
+
+
+xx <- as.list(org.Hs.egENSEMBL2EG)
+unilist = xx[which(names(xx) %in% rownames(pc.dge))]
+universeEntrez = unique(unlist(unilist))
+
+# HC genes
+sublist = xx[which(names(xx) %in% HCgeneNames)]
+HCentrez = unique(unlist(sublist))
+meshParams <- new("MeSHHyperGParams", geneIds = HCentrez, universeGeneIds = universeEntrez, annotation = "MeSH.Hsa.eg.db", category = "C", database = "gene2pubmed", pvalueCutoff = 0.05, pAdjust = "BH")
+#meshR <- meshHyperGTest(meshParams)
+#sigMeshTerms = unique(meshR@ORA$MESHTERM[which(meshR@ORA$BH < cutoff)])
+#print(sigMeshTerms)
+
+#  [1] "Neovascularization, Pathologic"                 "Neoplasm Invasiveness"                         
+#   [3] "Ovarian Neoplasms"                              "Genetic Predisposition to Disease"             
+#   [5] "Neoplasm Recurrence, Local"                     "Breast Neoplasms"                              
+#   [7] "Carcinoma, Squamous Cell"                       "Fibrosis"                                      
+#   [9] "Myocardial Reperfusion Injury"                  "Diabetes Mellitus, Type 2"                     
+#  [11] "Pancreatic Neoplasms"                           "Myocardial Infarction"                         
+#  [13] "Carcinoma"                                      "Lymphatic Metastasis"                          
+#  [15] "Brain Neoplasms"                                "Glioma"                                        
+#  [17] "Tobacco Use Disorder"                           "Liver Cirrhosis"                               
+#  [19] "Prostatic Neoplasms"                            "Urinary Bladder Neoplasms"                     
+#  [21] "Coronary Artery Disease"                        "Ventricular Remodeling"                        
+#  [23] "Heart Failure"                                  "Thyroid Neoplasms"                             
+#  [25] "Stroke"                                         "Adenocarcinoma"                                
+#  [27] "Carcinoma, Non-Small-Cell Lung"                 "Hypertension, Pulmonary"                       
+#  [29] "Edema"                                          "Disease Models, Animal"                        
+#  [31] "Insulin Resistance"                             "Skin Neoplasms"                                
+#  [33] "Mouth Neoplasms"                                "Alopecia"                                      
+#  [35] "Osteoarthritis, Knee"                           "Disease Progression"                           
+#  [37] "Colonic Neoplasms"                              "Colorectal Neoplasms"                          
+#  [39] "Kidney Neoplasms"                               "Pleural Neoplasms"                             
+#  [41] "Carcinoma, Renal Cell"                          "Pulmonary Disease, Chronic Obstructive"        
+#  [43] "Lung Neoplasms"                                 "Asthma"                                        
+#  [45] "Corneal Dystrophies, Hereditary"                "Mesothelioma"                                  
+#  [47] "Liver Cirrhosis, Experimental"                  "Esophageal Neoplasms"                          
+#  [49] "Spinal Cord Injuries"                           "Hypertension"                                  
+#  [51] "Inflammation"                                   "Mammary Neoplasms, Experimental"               
+#  [53] "Cell Transformation, Neoplastic"                "Osteosarcoma"                                  
+#  [55] "Carcinoma, Ductal, Breast"                      "Pulmonary Fibrosis"                            
+#  [57] "Carcinoma, Pancreatic Ductal"                   "Uterine Cervical Neoplasms"                    
+#  [59] "Bone Neoplasms"                                 "Choriocarcinoma"                               
+# ...
+
+
+# PAM genes
+sublist = xx[which(names(xx) %in% PAMgeneNames)]
+PAMentrez = unique(unlist(sublist))
+meshParams <- new("MeSHHyperGParams", geneIds = PAMentrez, universeGeneIds = universeEntrez, annotation = "MeSH.Hsa.eg.db", category = "C", database = "gene2pubmed", pvalueCutoff = 0.05, pAdjust = "BH")
+#meshRpam <- meshHyperGTest(meshParams)
+#sigMeshTerms = unique(meshRpam@ORA$MESHTERM[which(meshRpam@ORA$BH < cutoff)])
+#print(sigMeshTerms)
+
+#  [1] "Breast Neoplasms"                                 "Chromosomal Instability"                         
+#   [3] "Genomic Instability"                              "Neoplasm Invasiveness"                           
+#   [5] "Ovarian Neoplasms"                                "Stomach Neoplasms"                               
+#   [7] "Lung Neoplasms"                                   "Colorectal Neoplasms"                            
+#   [9] "Esophageal Neoplasms"                             "Aneuploidy"                                      
+#  [11] "Neoplasm Recurrence, Local"                       "Carcinoma, Squamous Cell"                        
+#  [13] "Carcinoma, Ductal, Breast"                        "Adenocarcinoma"                                  
+#  [15] "Carcinoma"                                        "Brain Neoplasms"                                 
+#  [17] "Lymphatic Metastasis"                             "Carcinoma, Non-Small-Cell Lung"                  
+#  [19] "Urinary Bladder Neoplasms"                        "Cell Transformation, Neoplastic"                 
+#  [21] "Neoplasms, Glandular and Epithelial"              "Pancreatic Neoplasms"                            
+#  [23] "Colonic Neoplasms"                                "Disease Progression"                             
+#  [25] "Prostatic Neoplasms"                              "Bone Neoplasms"                                  
+#  [27] "Polyploidy"                                       "Genetic Predisposition to Disease"               
+#  [29] "Skin Neoplasms"                                   "Liver Neoplasms"                                 
+#  [31] "Kidney Neoplasms"                                 "Precancerous Conditions"                         
+#  [33] "Glioma"                                           "Thyroid Neoplasms"                               
+#  [35] "Mouth Neoplasms"                                  "Carcinoma, Hepatocellular"                       
+#  [37] "Osteosarcoma"                                     "Lymphoma"                                        
+#  [39] "Medulloblastoma"                                  "Adenoma"                                         
+#  [41] "Neovascularization, Pathologic"                   "Fibrosis"                                        
+#  [43] "Abortion, Spontaneous"                            "Neoplasm Metastasis"                             
+#  [45] "Carcinoma, Renal Cell"                            "Endometrial Neoplasms"                           
+#  [47] "Osteoarthritis, Knee"                             "Cystadenocarcinoma, Serous"                      
+#  [49] "Recurrence"                                       "Pulmonary Disease, Chronic Obstructive"          
+#  [51] "Carcinoma in Situ"                                "Coronary Artery Disease"                         
+#  [53] "Carcinoma, Pancreatic Ductal"                     "Pulmonary Fibrosis"                              
+#  [55] "Meningioma"                                       "Melanoma"                                        
+#  [57] "Stroke"                                           "Chromosome Aberrations"                          
+#  [59] "Uterine Cervical Neoplasms"                       "Brain Ischemia"                                  
+#  [61] "Leukemia, Myeloid, Acute"                         "Neoplasms, Experimental"                         
+#  [63] "Carcinoma, Papillary"                             "Lymphoma, B-Cell"                                
+#  [65] "Alcoholism"                                       "Ventricular Remodeling"                          
+#  [67] "Carcinoma, Ductal"                                "Radiation Injuries, Experimental"                
+#  [69] "Leukemia, Myelogenous, Chronic, BCR-ABL Positive" "Carcinoma, Transitional Cell" 
+# ...
+
+
+
+# Cluster-specific lists
+sublist = xx[which(names(xx) %in% DEgeneLists$'cluster2-control')]
+C2entrez = unique(unlist(sublist))
+meshParams <- new("MeSHHyperGParams", geneIds = C2entrez, universeGeneIds = universeEntrez, annotation = "MeSH.Hsa.eg.db", category = "C", database = "gene2pubmed", pvalueCutoff = 0.05, pAdjust = "BH")
+# meshR_C2 <- meshHyperGTest(meshParams)
+# sigMeshTerms = unique(meshR_C2@ORA$MESHTERM[which(meshR_C2@ORA$BH < cutoff)])
+# print(sigMeshTerms)
+
+#  [1] "Genetic Predisposition to Disease"         "Tobacco Use Disorder"                     
+#   [3] "Puberty, Delayed"                          "Puberty, Precocious"                      
+#   [5] "Thrombophilia"                             "Inflammation"                             
+#   [7] "Primary Ovarian Insufficiency"             "Fibrosis"                                 
+#   [9] "Pulmonary Disease, Chronic Obstructive"    "Polycystic Ovary Syndrome"                
+#  [11] "Disease Models, Animal"                    "Hypertension"                             
+#  [13] "Alcoholism"                                "Chronic Disease"                          
+#  [15] "Osteoarthritis, Knee"                      "Bulimia"                                  
+#  [17] "Osteoarthritis"                            "Pituitary Neoplasms"                      
+#  [19] "Adenoma"                                   "Atherosclerosis"                          
+#  [21] "Arteriosclerosis"                          "Osteoporosis"                             
+#  [23] "Kidney Diseases"                           "Cleft Palate"                             
+#  [25] "Macular Degeneration"                      "Cleft Lip"  
+# ...
+
+sublist = xx[which(names(xx) %in% DEgeneLists$'cluster4-control')]
+C4entrez = unique(unlist(sublist))
+meshParams <- new("MeSHHyperGParams", geneIds = C4entrez, universeGeneIds = universeEntrez, annotation = "MeSH.Hsa.eg.db", category = "C", database = "gene2pubmed", pvalueCutoff = 0.05, pAdjust = "BH")
+# meshR_C4 <- meshHyperGTest(meshParams)
+# sigMeshTerms = unique(meshR_C4@ORA$MESHTERM[which(meshR_C4@ORA$BH < cutoff)])
+# print(sigMeshTerms)
+
+# [1] "Dupuytren Contracture"           "Lung Neoplasms"                  "Chronic Disease"                
+# [4] "Whipple Disease"                 "Recurrence"                      "Histiocytoma, Malignant Fibrous"
+# [7] "Sex Chromosome Aberrations"     
+
+
+sublist = xx[which(names(xx) %in% DEgeneLists$'cluster9-control')]
+C9entrez = unique(unlist(sublist))
+meshParams <- new("MeSHHyperGParams", geneIds = C9entrez, universeGeneIds = universeEntrez, annotation = "MeSH.Hsa.eg.db", category = "C", database = "gene2pubmed", pvalueCutoff = 0.05, pAdjust = "BH")
+# meshR_C9 <- meshHyperGTest(meshParams)
+# sigMeshTerms = unique(meshR_C9@ORA$MESHTERM[which(meshR_C9@ORA$BH < cutoff)])
+# print(sigMeshTerms)
+# Error in .meshHyperGTestInternal(p) : None of MeSH Term is significant !
+
+
+sublist = xx[which(names(xx) %in% DEgeneLists$'cluster13-control')]
+C13entrez = unique(unlist(sublist))
+meshParams <- new("MeSHHyperGParams", geneIds = C13entrez, universeGeneIds = universeEntrez, annotation = "MeSH.Hsa.eg.db", category = "C", database = "gene2pubmed", pvalueCutoff = 0.05, pAdjust = "BH")
+# meshR_C13 <- meshHyperGTest(meshParams)
+# sigMeshTerms = unique(meshR_C13@ORA$MESHTERM[which(meshR_C13@ORA$BH < cutoff)])
+# print(sigMeshTerms)
+
+#  [1] "Inflammation"            "Pancreatitis"            "Acute Coronary Syndrome" "Diabetic Angiopathies"  
+#  [5] "Myocardial Infarction"   "Pain"                    "Disease Models, Animal"  "Edema"                  
+#  [9] "Coronary Artery Disease" "Hypertension"            "Atherosclerosis"         "Cat Diseases"           
+# [13] "Alcoholism"              "Brain Ischemia"          "Coronary Disease"   
+detach("package:meshr", unload=TRUE)
+
+```
+
+Enrichment of genes correlated with phenotypic measurements: AlkP and BrdU
+```{r}
+alkPEnt = synGet('syn3919300')
+alkPgenes = as.character(read.csv(getFileLocation(alkPEnt))[,1])
+
+BrdUEnt = synGet('syn3919471')
+BrdUgenes = as.character(read.csv(getFileLocation(BrdUEnt))[,1])
+
+phenoEnrich=function(queryGeneSet,universeGeneSet,phenToTest="alkp"){
+  contingency = matrix(NA,nrow = 2,ncol = 2,dimnames = list(c("query","all"),c("phenoGroup","other")))  
+  phenoGenes = alkPgenes
+  if (!phenToTest=="alkp"){ phenoGenes = BrdUgenes }
+  contingency[1,1] = length(which(queryGeneSet %in% phenoGenes))
+  contingency[1,2] = length(queryGeneSet) - contingency[1,1]
+  contingency[2,1] = length(which(universeGeneSet %in% phenoGenes))
+  contingency[2,2] = length(universeGeneSet) - contingency[2,1]
+  test = fisher.test(contingency)
+  print(test)
+  return(test)
+}
+
+fisherTestResults = matrix(NA,nrow = 6,ncol = 2)
+# HC RF genes
+fisherTestResults[1,1] = phenoEnrich(queryGeneSet = HCgeneNames, universeGeneSet = rownames(pc.dge), phenToTest = "alkp")$p.value
+fisherTestResults[1,2]= phenoEnrich(queryGeneSet = HCgeneNames, universeGeneSet = rownames(pc.dge), phenToTest = "brdu")$p.value
+
+
+# PAM RF genes
+fisherTestResults[2,1] = phenoEnrich(queryGeneSet = PAMgeneNames, universeGeneSet = rownames(pc.dge), phenToTest = "alkp")$p.value
+fisherTestResults[2,2] = phenoEnrich(queryGeneSet = PAMgeneNames, universeGeneSet = rownames(pc.dge), phenToTest = "brdu")$p.value
+
+
+# C2 genes
+fisherTestResults[3,1] = phenoEnrich(queryGeneSet = DEgeneLists$'cluster2-control', universeGeneSet = rownames(pc.dge), phenToTest = "alkp")$p.value
+fisherTestResults[3,2] = phenoEnrich(queryGeneSet = DEgeneLists$'cluster2-control', universeGeneSet = rownames(pc.dge), phenToTest = "brdu")$p.value
+
+
+# C4 genes
+fisherTestResults[4,1]= phenoEnrich(queryGeneSet = DEgeneLists$'cluster4-control', universeGeneSet = rownames(pc.dge), phenToTest = "alkp")$p.value
+fisherTestResults[4,2] = phenoEnrich(queryGeneSet = DEgeneLists$'cluster4-control', universeGeneSet = rownames(pc.dge), phenToTest = "brdu")$p.value
+
+# C9 genes
+fisherTestResults[5,1] = phenoEnrich(queryGeneSet = DEgeneLists$'cluster9-control', universeGeneSet = rownames(pc.dge), phenToTest = "alkp")$p.value
+fisherTestResults[5,2] = phenoEnrich(queryGeneSet = DEgeneLists$'cluster9-control', universeGeneSet = rownames(pc.dge), phenToTest = "brdu")$p.value
+
+# C13 genes
+fisherTestResults[6,1] = phenoEnrich(queryGeneSet = DEgeneLists$'cluster13-control', universeGeneSet = rownames(pc.dge), phenToTest = "alkp")$p.value
+fisherTestResults[6,2] =  phenoEnrich(queryGeneSet = DEgeneLists$'cluster13-control', universeGeneSet = rownames(pc.dge), phenToTest = "brdu")$p.value
+
+
+colnames(fisherTestResults) = c("alkP", "BrdU")
+rownames(fisherTestResults) = c("HC randForest", "PAM randForest", "cluster2", "cluster4", "cluster9", "cluster13")
+fisherTestResults
+```
+
+
+Pathway profiling
+```{r}
+library(ReactomePA)
+HC_path = enrichPathway(gene=HCentrez,universe = universeEntrez, readable=T)
+head(summary(HC_path))
+barplot(HC_path,showCategory = 25, main = "HC genes")
+enrichMap(HC_path)
+
+PAM_path = enrichPathway(gene=PAMentrez,universe = universeEntrez,readable=TRUE)
+barplot(PAM_path,showCategory = 25)
+enrichMap(PAM_path)
+
+C2_path = enrichPathway(gene=C2entrez,universe = universeEntrez,readable=TRUE)
+barplot(C2_path,showCategory = 25)
+enrichMap(C2_path)
+
+C4_path = enrichPathway(gene=C4entrez,universe = universeEntrez,readable=TRUE)
+barplot(C4_path,showCategory = 25)
+enrichMap(C4_path)
+
+C9_path = enrichPathway(gene=C9entrez,universe = universeEntrez,readable=TRUE)
+
+C13_path = enrichPathway(gene=C13entrez,universe = universeEntrez,readable=TRUE)
+barplot(C13_path,showCategory = 25)
+enrichMap(C13_path)
+```
+
