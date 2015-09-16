@@ -1,5 +1,4 @@
-voom_fit=function (counts, design = NULL, lib.size = NULL, normalize.method = "none", 
-          plot = FALSE, span = 0.5, ...) 
+voom_fit=function (counts, design = NULL, lib.size = NULL, normalize.method = "none", plot = FALSE, span = 0.5, ...) 
 {
   out <- list()
   if (is(counts, "DGEList")) {
@@ -45,14 +44,36 @@ voom_fit=function (counts, design = NULL, lib.size = NULL, normalize.method = "n
     sx <- sx[!allzero]
     sy <- sy[!allzero]
   }
-  l <- lowess(sx, sy, f = span)
-  plot(sx, sy, xlab = "log2( count size + 0.5 )", ylab = "Sqrt( standard deviation )", 
-       pch = 16, cex = 0.25)
-  title("voom: Mean-variance trend")
-  lines(l, col = "red")
+#   l <- lowess(sx, sy, f = span)
+#   plot(sx, sy, xlab = "log2( count size + 0.5 )", ylab = "Sqrt( standard deviation )", 
+#        pch = 16, cex = 0.25)
+#   title("voom: Mean-variance trend")
+#   lines(l, col = "red")
 
-  le = loess(sy~sx,span=span)
+  l = loess(sy~sx,span=span,degree = 2)
+  if (plot) {
 #  scatter.smooth(sx,sy,pch = 16, cex = 0.25, lpars = list(col = "cyan", lwd=2))
-  scatter.smooth(sx,sy,pch = 16, cex = 0.25, lpars = list(col = "green", lwd = 2),degree=2)
-  return(le)
+    scatter.smooth(sx,sy,pch = 16, cex = 0.25, lpars = list(col = "green", lwd = 2),degree=2)
+    title("voom: Mean-var fit with 2-deg polynomial")
+  }
+  f <- approxfun(l, rule = 2)
+  if (fit$rank < ncol(design)) {
+    j <- fit$pivot[1:fit$rank]
+  fitted.values <- fit$coef[, j, drop = FALSE] %*% t(fit$design[,j, drop = FALSE])
+  }
+  else {
+    fitted.values <- fit$coef %*% t(fit$design)
+  }
+  fitted.cpm <- 2^fitted.values
+  fitted.count <- 1e-06 * t(t(fitted.cpm) * (lib.size + 1))
+  fitted.logcount <- log2(fitted.count)
+  w <- 1/f(fitted.logcount)^4
+  dim(w) <- dim(fitted.logcount)
+  out$E <- y
+  out$weights <- w
+  out$design <- design
+  if (is.null(out$targets)) 
+    out$targets <- data.frame(lib.size = lib.size)
+  else out$targets$lib.size <- lib.size
+  new("EList", out)
 }
