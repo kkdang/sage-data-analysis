@@ -1,0 +1,148 @@
+---
+title: "sample_outliers_transcripts.Rmd"
+author: "Kristen Dang"
+date: "Sept. 22, 2015"
+output:
+  html_document:
+    fig_height: 7
+---
+
+```{r message=FALSE,warning=FALSE}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+setwd('~/Computing/cranio/')
+cutoff = 0.05
+
+proteinCoding_transcripts = getByBiotype(biotype = 'protein_coding',gene = FALSE)
+```
+
+Filter and convert metadata
+```{r}
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+```
+
+Estimated reads
+```{r}
+data.dge = generateDataObj('syn3064890')
+palx5.dge = filterByFractionPresent(data.dge,fraction = 0.05)
+#protein-coding screen?
+palx5.dge = calcNormFactors(palx5.dge)
+dim(palx5.dge)
+
+## Remove samples that don't have seq data.
+## Order the data in the same way for counts and metadata
+metadataMatching = metadataFiltered[-which(!metadataFiltered$Px_Code %in% colnames(palx5.dge)),]
+metadataMatching = metadataMatching[match(colnames(palx5.dge), metadataMatching$Px_Code),]
+head(metadataMatching$Px_Code)
+head(colnames(palx5.dge))
+
+metaCategorical = c("Sex", "Sample_Type", "Initial_date_set_up", "Initial_date_freeze", "for_RNA_date_set_up", "for_RNA_date_plated", "for_RNA_date_harvest", "ScanDate", "Sample_Origin", "caseStatus", "SAMPLE" )
+
+```
+
+PCA plots
+```{r}
+fm.pca = FM_PCA(in.voom = voom_on_mean(palx5.dge,plot = FALSE),plot = TRUE)
+op = par(mfrow = c(2,2))
+plotcols = c("orangered", "royalblue")
+plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(metadataMatching$caseStatus))],label = "all",cex=0.8)
+
+plot.PCA(fm.pca, axes = c(2,3),choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(metadataMatching$caseStatus))],label = "all",cex=0.8)
+
+plot.PCA(fm.pca, axes = c(3,4),choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(metadataMatching$caseStatus))],label = "all",cex=0.8)
+
+plot.PCA(fm.pca, axes = c(4,5),choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(metadataMatching$caseStatus))],label = "all",cex=0.8)
+par(op)
+```
+
+Correlation heatmap and histogram
+```{r fig.height=9,fig.width=9}
+counts = cpm(palx5.dge,log = FALSE,normalized.lib.sizes = TRUE)
+l_counts = cpm(palx5.dge,log = TRUE,normalized.lib.sizes = TRUE)
+
+# no adjustment for zeros, replaces them with NA
+l_pc_counts = log2(counts[which(rownames(counts)%in%proteinCoding_transcripts[,1]),])
+x = which(l_pc_counts %in% c("-Inf", "Inf", "NaN"))
+l_pc_counts[x] = NA
+hist(l_pc_counts)
+#heatmap(cor(l_pc_counts,method = "pearson",use = "complete"),Colv="Rowv")
+dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none")
+plot(rev(dend$Rowv))
+plot(rev(cut(dend$Rowv,h=0.85)$lower[[2]]))
+
+
+# Batches?
+cols = rainbow(length(levels(metadataMatching$Initial_date_freeze)))
+dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Initial_date_freeze)])
+
+cols = rainbow(length(levels(metadataMatching$Sex)))
+dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sex)])
+
+cols = rainbow(length(levels(metadataMatching$Sample_Type)))
+dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sample_Type)])
+
+cols = rainbow(length(levels(metadataMatching$for_RNA_date_plated)))
+dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$for_RNA_date_plated)])
+
+
+cols = rainbow(length(levels(metadataMatching$Sample_Origin)))
+dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sample_Origin)])
+
+
+
+# adds 0.05 to each count to offset zeroes
+pc_counts = l_counts[which(rownames(l_counts)%in%proteinCoding_transcripts[,1]),]
+hist(pc_counts)
+#heatmap(cor(pc_counts,method = "pearson"),Colv="Rowv")
+dend = heatmap(cor(pc_counts,method = "spearman"),Colv="Rowv",keep.dendro = TRUE,scale = "none")
+plot(rev(dend$Rowv))
+plot(rev(cut(dend$Rowv,h=0.35)$lower[[2]]))
+```
+
+Density plots
+```{r}
+pc.dge = palx5.dge[which(rownames(palx5.dge)%in%proteinCoding_transcripts[,1]),]
+densityPlot(pc.dge, mainLabel="protein coding genes",ub=0.35)
+```
+
+
+Median - IQR
+```{r}
+meds = apply(pc_counts,MARGIN = 2,FUN = median,na.rm = TRUE)
+iqrs = apply(pc_counts,MARGIN = 2,FUN = IQR, na.rm = TRUE)
+boxplot(meds, main = "medians")
+boxplot(iqrs, main = "interquartile ranges")
+plot(meds,iqrs, xlab = "medians", ylab = "interquartile ranges", main = "log2(CPM) protein-coding genes")
+abline(h = 9.72, col = "sandybrown", lty = 2)
+abline(v = -1.7, col = "sandybrown", lty = 2)
+which(iqrs < 9.72)
+which(meds < -1.7)
+```
+
+
+Extreme genes
+```{r}
+countExtreme=function(inVals,inRanges){
+  lower = sum(inVals < inRanges[1,])
+  upper = sum(inVals > inRanges[2,])
+  return(lower+upper)
+}
+confintervals = apply(pc_counts,MARGIN = 1,function(x){t.test(x)$conf.int})
+extreme = apply(pc_counts,MARGIN = 2,countExtreme,inRanges=confintervals)
+boxplot(extreme)
+which(extreme > 56500)
+which(extreme < 54500)
+```
+
+
+Which ones had high unmapped fraction reads?
+```{r}
+metricsTable = synTableQuery('SELECT * FROM syn3105973')
+metrics = metricsTable@values
+rownames(metrics) = metrics[,1]
+metrics = data.matrix(metrics[,2:10])
+as.character(metadata$Px_Code[match(names(which(metrics[,1] < 20e6)),metadata$SeqSampleName)])
+```
+
