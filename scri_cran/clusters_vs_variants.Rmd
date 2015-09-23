@@ -1,0 +1,158 @@
+---
+title: "clusters_vs_variants.Rmd"
+author: "Kristen Dang"
+date: "September 9, 2015"
+output: html_document
+---
+
+```{r message=FALSE,warning=FALSE}
+library('rGithubClient')
+library("VennDiagram")
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+```
+
+
+```{r}
+testGroupEnrich=function(queryGeneSet,universeGeneSet,groupToTest,printOut=FALSE){
+  
+  contingency = matrix(NA,nrow = 2,ncol = 2,dimnames = list(c("query","all"),c("groupToTest","other")))  
+  contingency[1,1] = length(which(queryGeneSet %in% groupToTest))
+  contingency[1,2] = length(queryGeneSet) - contingency[1,1]
+  contingency[2,1] = length(which(universeGeneSet %in% groupToTest))
+  contingency[2,2] = length(universeGeneSet) - contingency[2,1]
+  test = fisher.test(contingency)
+  if (printOut) { print(test)}
+  return(test)
+}
+```
+
+
+Get universe list of expressed genes
+```{r}
+DGEEnt = synGet('syn4738853')
+load(getFileLocation(DGEEnt))
+pc_palx20.dge = in.dge
+rm(in.dge)
+universeHGNC = unique(getHGNC(inENSG = rownames(pc_palx20.dge))$hgnc_symbol)
+```
+
+Get lists of filtered variants
+```{r}
+varEnt = synGet('syn4933533')
+variantsFiltered = read.delim(getFileLocation(varEnt))
+
+# correct/update the symbol names
+
+```
+
+
+Test random forest genes
+```{r}
+hcRFEnt = synGet('syn4913693')
+HCgeneNames = as.vector(read.delim(getFileLocation(hcRFEnt),header = FALSE)[,1])
+HC_HGNC = unique(getHGNC(inENSG = HCgeneNames)$hgnc_symbol)
+
+pamRFEnt = synGet('syn4913692')
+PAMgeneNames = as.vector(read.delim(getFileLocation(pamRFEnt),header = FALSE)[,1])
+PAM_HGNC = unique(getHGNC(inENSG = PAMgeneNames)$hgnc_symbol)
+
+
+# Get highvar genes
+Ygenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="Y", mart=Hs)
+Xgenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="X", mart=Hs)
+fitEnt = synGet('syn4893933')
+load(getFileLocation(fitEnt))
+hist(fit$sigma, col = "honeydew",breaks = 20)
+sum(fit$sigma > 2)
+sum(fit$sigma > 1.5)
+sum(fit$sigma > 3)
+sum(fit$sigma > 4)
+highvar2 = setdiff(names(fit$Amean)[which(fit$sigma > 2)], union(Xgenes[,1], Ygenes[,1]))
+highvar2HGNC = unique(getHGNC(inENSG = highvar2)$hgnc_symbol)
+
+
+fisherTestResults = matrix(NA,nrow = 6,ncol = 5)
+fisherTestOdds = matrix(NA,nrow = 6,ncol = 5)
+# HC RF genes
+for (i in 1:5){
+  returnTest = testGroupEnrich(queryGeneSet = HC_HGNC, universeGeneSet = highvar2HGNC, groupToTest = as.character(variantsFiltered[,i]))
+  fisherTestResults[1,i] = returnTest$p.value
+  fisherTestOdds[1,i] = returnTest$estimate
+}
+
+# PAM RF genes
+for (i in 1:5){
+  returnTest = testGroupEnrich(queryGeneSet = PAM_HGNC, universeGeneSet = highvar2HGNC, groupToTest = as.character(variantsFiltered[,i]))
+  fisherTestResults[2,i] = returnTest$p.value
+  fisherTestOdds[2,i] = returnTest$estimate
+}
+```
+
+Quick simulation to compare with HC random forest results
+```{r}
+numReps = 1000
+simulations = sapply(seq(1,numReps),function(z) {sample(x = seq(1,length(highvar2HGNC)),size = length(HC_HGNC),replace = FALSE)})
+simFisherResults = matrix(NA,nrow = numReps,ncol = 5)
+for (j in 1:numReps){
+  inputHGNC = highvar2HGNC[simulations[,j]]
+  for (i in 1:5){
+    simFisherResults[j,i] = testGroupEnrich(queryGeneSet = inputHGNC, universeGeneSet = highvar2HGNC, groupToTest = as.character(variantsFiltered[,i]))$p.value
+  }
+}
+hist(simFisherResults)
+hist(simFisherResults[,1])
+hist(simFisherResults[,2])
+hist(simFisherResults[,3])
+hist(simFisherResults[,4])
+hist(simFisherResults[,5])
+
+# FDR
+length(which(simFisherResults < 0.05))/1000
+length(which(simFisherResults < 0.01))/1000
+```
+
+Test differential expression vs control genes
+```{r}
+DEgenesEntity = synGet('syn4939237')
+load(getFileLocation(DEgenesEntity))
+
+for (j in 1:4){
+  inputHGNC = unique(getHGNC(inENSG = DEgeneLists[[j]])$hgnc_symbol) 
+  for (i in 1:5){
+    returnTest = testGroupEnrich(queryGeneSet = inputHGNC, universeGeneSet = universeHGNC, groupToTest = as.character(variantsFiltered[,i]))
+    fisherTestResults[(2+j),i] = returnTest$p.value
+    fisherTestOdds[(2+j),i] = returnTest$estimate
+  }
+}
+
+colnames(fisherTestResults) = colnames(variantsFiltered)
+colnames(fisherTestOdds) = colnames(variantsFiltered)
+rownames(fisherTestResults) = c("HC randForest", "PAM randForest", "cluster2", "cluster4", "cluster9", "cluster13")
+rownames(fisherTestOdds) = c("HC randForest", "PAM randForest", "cluster2", "cluster4", "cluster9", "cluster13")
+fisherTestResults
+fisherTestOdds
+```
+
+Quick simulation to compare with DE results
+```{r}
+numReps = 1000
+simulations = sapply(seq(1,numReps),function(z) {sample(x = seq(1,length(universeHGNC)),size = length(DEgeneLists$cluster2),replace = FALSE)})
+simFisherResults = matrix(NA,nrow = numReps,ncol = 5)
+for (j in 1:numReps){
+  inputHGNC = universeHGNC[simulations[,j]]
+  for (i in 1:5){
+    simFisherResults[j,i] = testGroupEnrich(queryGeneSet = inputHGNC, universeGeneSet = universeHGNC, groupToTest = as.character(variantsFiltered[,i]))$p.value
+  }
+}
+hist(simFisherResults)
+hist(simFisherResults[,1])
+hist(simFisherResults[,2])
+hist(simFisherResults[,3])
+hist(simFisherResults[,4])
+hist(simFisherResults[,5])
+
+# FDR
+length(which(simFisherResults < 0.05))/1000
+length(which(simFisherResults < 0.01))/1000
+```
