@@ -63,62 +63,60 @@ counts = cpm(palx5.dge,log = FALSE,normalized.lib.sizes = TRUE)
 l_counts = cpm(palx5.dge,log = TRUE,normalized.lib.sizes = TRUE)
 
 # no adjustment for zeros, replaces them with NA
-l_pc_counts = log2(counts[which(rownames(counts)%in%proteinCoding_transcripts[,1]),])
-x = which(l_pc_counts %in% c("-Inf", "Inf", "NaN"))
-l_pc_counts[x] = NA
-hist(l_pc_counts)
-#heatmap(cor(l_pc_counts,method = "pearson",use = "complete"),Colv="Rowv")
-dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none")
+log_counts = log2(counts)
+x = which(log_counts %in% c("-Inf", "Inf", "NaN"))
+log_counts[x] = NA
+hist(log_counts)
+#heatmap(cor(log_counts,method = "pearson",use = "complete"),Colv="Rowv")
+dend = heatmap(cor(log_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none")
 plot(rev(dend$Rowv))
 plot(rev(cut(dend$Rowv,h=0.85)$lower[[2]]))
 
 
+# adds 0.05 to each count to offset zeroes
+hist(l_counts)
+#heatmap(cor(l_counts,method = "pearson"),Colv="Rowv")
+dend = heatmap(cor(l_counts,method = "spearman"),Colv="Rowv",keep.dendro = TRUE,scale = "none")
+plot(rev(dend$Rowv))
+plot(rev(cut(dend$Rowv,h=0.35)$lower[[2]]))
+
 # Batches?
 cols = rainbow(length(levels(metadataMatching$Initial_date_freeze)))
-dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Initial_date_freeze)])
+dend = heatmap(cor(l_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Initial_date_freeze)])
 
 cols = rainbow(length(levels(metadataMatching$Sex)))
-dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sex)])
+dend = heatmap(cor(l_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sex)])
 
 cols = rainbow(length(levels(metadataMatching$Sample_Type)))
-dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sample_Type)])
+dend = heatmap(cor(l_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sample_Type)])
 
 cols = rainbow(length(levels(metadataMatching$for_RNA_date_plated)))
-dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$for_RNA_date_plated)])
+dend = heatmap(cor(l_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$for_RNA_date_plated)])
 
 
 cols = rainbow(length(levels(metadataMatching$Sample_Origin)))
-dend = heatmap(cor(l_pc_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sample_Origin)])
+dend = heatmap(cor(l_counts,method = "spearman",use = "complete"),Colv="Rowv",keep.dendro = TRUE,scale = "none",ColSideColors =cols[as.numeric(metadataMatching$Sample_Origin)])
 
 
-
-# adds 0.05 to each count to offset zeroes
-pc_counts = l_counts[which(rownames(l_counts)%in%proteinCoding_transcripts[,1]),]
-hist(pc_counts)
-#heatmap(cor(pc_counts,method = "pearson"),Colv="Rowv")
-dend = heatmap(cor(pc_counts,method = "spearman"),Colv="Rowv",keep.dendro = TRUE,scale = "none")
-plot(rev(dend$Rowv))
-plot(rev(cut(dend$Rowv,h=0.35)$lower[[2]]))
 ```
 
 Density plots
 ```{r}
-pc.dge = palx5.dge[which(rownames(palx5.dge)%in%proteinCoding_transcripts[,1]),]
-densityPlot(pc.dge, mainLabel="protein coding genes",ub=0.35)
+densityPlot(palx5.dge, mainLabel="all genes, palx5",ub=0.35)
 ```
 
 
 Median - IQR
 ```{r}
-meds = apply(pc_counts,MARGIN = 2,FUN = median,na.rm = TRUE)
-iqrs = apply(pc_counts,MARGIN = 2,FUN = IQR, na.rm = TRUE)
+meds = apply(l_counts,MARGIN = 2,FUN = median,na.rm = TRUE)
+iqrs = apply(l_counts,MARGIN = 2,FUN = IQR, na.rm = TRUE)
 boxplot(meds, main = "medians")
 boxplot(iqrs, main = "interquartile ranges")
 plot(meds,iqrs, xlab = "medians", ylab = "interquartile ranges", main = "log2(CPM) protein-coding genes")
-abline(h = 9.72, col = "sandybrown", lty = 2)
-abline(v = -1.7, col = "sandybrown", lty = 2)
-which(iqrs < 9.72)
-which(meds < -1.7)
+abline(h = 9.465, col = "sandybrown", lty = 2)
+abline(v = -1.43, col = "sandybrown", lty = 2)
+which(iqrs < 9.465)
+which(meds < -1.43)
 ```
 
 
@@ -129,20 +127,22 @@ countExtreme=function(inVals,inRanges){
   upper = sum(inVals > inRanges[2,])
   return(lower+upper)
 }
-confintervals = apply(pc_counts,MARGIN = 1,function(x){t.test(x)$conf.int})
-extreme = apply(pc_counts,MARGIN = 2,countExtreme,inRanges=confintervals)
+confintervals = apply(l_counts,MARGIN = 1,function(x){t.test(x)$conf.int})
+extreme = apply(l_counts,MARGIN = 2,countExtreme,inRanges=confintervals)
 boxplot(extreme)
-which(extreme > 56500)
-which(extreme < 54500)
+which(extreme > 78500)
+which(extreme < 76000)
 ```
 
 
 Which ones had high unmapped fraction reads?
 ```{r}
-metricsTable = synTableQuery('SELECT * FROM syn3105973')
+metricsTable = synTableQuery('SELECT * FROM syn2809454')
 metrics = metricsTable@values
 rownames(metrics) = metrics[,1]
-metrics = data.matrix(metrics[,2:10])
-as.character(metadata$Px_Code[match(names(which(metrics[,1] < 20e6)),metadata$SeqSampleName)])
+boxplot(metrics$mappedRatio)
+highUnmapped = metrics$sampleName[which(metrics$mappedRatio < 0.8)]
+namesKeyTable = synTableQuery('SELECT "Px Code","SeqSampleName" FROM syn2823605')
+namesKeyTable@values$`Px Code`[which(namesKeyTable@values$SeqSampleName %in% highUnmapped)]
 ```
 
