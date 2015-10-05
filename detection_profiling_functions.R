@@ -4,8 +4,6 @@
 
 library('rGithubClient')
 library(edgeR)
-library(synapseClient)
-synapseLogin()
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 
@@ -78,13 +76,13 @@ runRegressionAndPlot=function(inCounts,bioCategoryCounts,totalBiotypeCounts,inLi
   rownames(lmRanges) = names(bioCategoryCounts)
   
   j = 1
-  total_samples = ncol(inCounts) - 1
+  total_samples = ncol(inCounts) - 2
   biotypeCountsPerSampleFilter = apply(inCounts[,1:total_samples], 2, countDetectedByBiotype, biotypes = inCounts$biotype, filter=minCount)
   EnsemblTotal = totalBiotypeCounts[match(rownames(biotypeCountsPerSampleFilter), names(totalBiotypeCounts))]
   normBiotypeCounts = apply(biotypeCountsPerSampleFilter, MARGIN=2, function(x) x/EnsemblTotal)
-  plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts,inLibSize = inLibSize)
+  plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter[,1:total_samples],inNormCounts=normBiotypeCounts[,1:total_samples],inLibSize = inLibSize)
   coords = match(rownames(normBiotypeCounts), rownames(lmResults))
-  lmResults[coords,j:(j+1)] = regressDetectionOnMetadata(inDetectCounts=normBiotypeCounts, inMetaData=log10(data_palo.dge$samples$lib.size))
+  lmResults[coords,j:(j+1)] = regressDetectionOnMetadata(inDetectCounts=normBiotypeCounts, inMetaData=log10(inLibSize))
   lmRanges[coords,j:(j+1)] = t(apply(normBiotypeCounts,MARGIN=1,FUN=range))
   lmMeds[coords,1] = apply(normBiotypeCounts,MARGIN=1,FUN=median, na.rm = TRUE)
   j = j + 2
@@ -98,13 +96,13 @@ runRegressionAndPlot=function(inCounts,bioCategoryCounts,totalBiotypeCounts,inLi
 
 
 ### Quadrant plot of fraction detected vs regression estimate.
-quadrantPlot=function(inResults,observedBioCounts){
+quadrantPlot=function(inResults,observedBioCounts,plotTitle=""){
   par(mfrow = c(1,1))
   plotcols = rainbow(nrow(inResults$estimates))
   plotcex = log10(observedBioCounts)
   indexToPlot = 1 # values = 1,3,5
   altIndex = 1 # values = 1,2,3
-  plot(inResults$medians[,altIndex],inResults$estimates[,indexToPlot], xlim = range(0,1), ylim = range(0,0.5), xlab = "fraction detected", ylab = "genes per depth (slope estimate)", col = plotcols, pch = 16,cex=plotcex)
+  plot(inResults$medians[,altIndex],inResults$estimates[,indexToPlot], xlim = range(0,1), ylim = range(0,0.5), xlab = "fraction detected", ylab = "genes per depth (slope estimate)", col = plotcols, pch = 16,cex=plotcex,main=plotTitle)
   segments(x0=inResults$range[,indexToPlot],y0=inResults$estimates[,indexToPlot],x1=inResults$range[,(indexToPlot+1)],y1=inResults$estimates[,indexToPlot], col = plotcols)
   legend("topright",legend=rownames(inResults$range),col=plotcols,pch=16)
 }
