@@ -48,24 +48,24 @@ plotNumSamplesDetecting=function(inCounts,minCount=1){ # Minimum number of reads
   typesToPlot = names(table(paloCounts_wdetect$biotype))
   op = par(mfrow=c(3,3))
   for (i in 1:length(typesToPlot)) {
-    hist(paloCounts_wdetect$detected[paloCounts_wdetect$biotype == typesToPlot[i]], main = typesToPlot[i], xlab = "number samples detecting", col = "lightcyan2", xlim = range(0,ncol(geneCounts)+10))
+    hist(paloCounts_wdetect$detected[paloCounts_wdetect$biotype == typesToPlot[i]], main = typesToPlot[i], xlab = "number samples detecting", col = "lightcyan2", xlim = range(0,ncol(inCounts)+1))
   }
   par(op)
   return(paloCounts_wdetect)
 }
 
-plotDetectionByBiotype=function(inBiotypeCounts, inNormCounts){
+plotDetectionByBiotype=function(inBiotypeCounts,inNormCounts,inLibSize){
   op = par(mfrow = c(3,3))
   for (i in 1:nrow(inBiotypeCounts)) {
-    plot(log10(data_palo.dge$samples$lib.size), inNormCounts[i,], main = rownames(inBiotypeCounts)[i], xlab = "log10(mapped reads)", ylab = "fraction detected", ylim = range(0,1))
-    lines(lowess(log10(data_palo.dge$samples$lib.size), inNormCounts[i,]), col = "blue", lwd = 2)    
+    plot(log10(inLibSize), inNormCounts[i,], main = rownames(inBiotypeCounts)[i], xlab = "log10(mapped reads)", ylab = "fraction detected", ylim = range(0,1))
+    lines(lowess(log10(inLibSize), inNormCounts[i,]), col = "blue", lwd = 2)    
   }
   par(op)
 }
 
 
 ### Regression analysis of relationship between detection and depth per biotype. Print linear regression results.
-runRegressionAndPlot=function(inCounts,bioCategoryCounts,totalBiotypeCounts,minCount=1){
+runRegressionAndPlot=function(inCounts,bioCategoryCounts,totalBiotypeCounts,inLibSize,minCount=1){
   lmResults = matrix(0, nrow = length(bioCategoryCounts), ncol = 2)
   rownames(lmResults) = names(bioCategoryCounts)
   colnames(lmResults) = c("estimate", "pval")
@@ -78,10 +78,11 @@ runRegressionAndPlot=function(inCounts,bioCategoryCounts,totalBiotypeCounts,minC
   rownames(lmRanges) = names(bioCategoryCounts)
   
   j = 1
+  total_samples = ncol(inCounts) - 1
   biotypeCountsPerSampleFilter = apply(inCounts[,1:total_samples], 2, countDetectedByBiotype, biotypes = inCounts$biotype, filter=minCount)
   EnsemblTotal = totalBiotypeCounts[match(rownames(biotypeCountsPerSampleFilter), names(totalBiotypeCounts))]
   normBiotypeCounts = apply(biotypeCountsPerSampleFilter, MARGIN=2, function(x) x/EnsemblTotal)
-  plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts)
+  plotDetectionByBiotype(inBiotypeCounts=biotypeCountsPerSampleFilter,inNormCounts=normBiotypeCounts,inLibSize = inLibSize)
   coords = match(rownames(normBiotypeCounts), rownames(lmResults))
   lmResults[coords,j:(j+1)] = regressDetectionOnMetadata(inDetectCounts=normBiotypeCounts, inMetaData=log10(data_palo.dge$samples$lib.size))
   lmRanges[coords,j:(j+1)] = t(apply(normBiotypeCounts,MARGIN=1,FUN=range))
