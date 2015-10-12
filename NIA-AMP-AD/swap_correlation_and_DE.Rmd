@@ -1,0 +1,134 @@
+---
+title: "swap_correlation_and_DE.Rmd"
+author: "Kristen Dang"
+date: "October 5, 2015"
+output: 
+  html_document: 
+    fig_height: 7
+---
+
+
+
+```{r}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(edgeR)
+library(gplots)
+library(RColorBrewer)
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+```
+
+# Get data
+```{r}
+sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
+```
+
+
+# Correlation analysis of processed data:
+```{r}
+# Get common set of genes to use
+mssm_mayo = intersect(rownames(mssmR_counts),rownames(mayoR_counts))
+mmb = intersect(mssm_mayo,rownames(broadR_counts))
+mssm_Common = mssmR_counts[which(rownames(mssmR_counts) %in% mmb),]
+mssm_Common = mssm_Common[order(rownames(mssm_Common)),]
+mayo_Common = mayoR_counts[which(rownames(mayoR_counts) %in% mmb),]
+mayo_Common = mayo_Common[order(rownames(mayo_Common)),]
+broad_Common = broadR_counts[which(rownames(broadR_counts) %in% mmb),]
+broad_Common = broad_Common[order(rownames(broad_Common)),]
+
+tail(rownames(mssm_Common))
+tail(rownames(mayo_Common))
+tail(rownames(broad_Common))
+dim(mssm_Common)
+dim(mayo_Common)
+dim(broad_Common)
+
+```
+
+How well do samples correlate to each other across sites? Plot distribution of per-sample correlations across sites. Compare to correlation within sites.
+1. Mayo-MSSM
+```{r}
+tofix = which(colnames(mssm_Common) == "X5689621")
+colnames(mssm_Common)[tofix] = "X05689621"
+
+mssm_Common = mssm_Common[,match(colnames(mayo_Common),colnames(mssm_Common))]
+colnames(mssm_Common)
+colnames(mayo_Common)
+mm_Corr = cor(mssm_Common,mayo_Common,method = "spearman")
+heatmap.2(mm_Corr,trace="none",breaks = seq(0.80,1,0.01),margins = c(7,7), main = "Mayo-MSSM")
+```
+2. Mayo-Broad
+```{r}
+tofix = which(colnames(broad_Common) == "X5689621")
+colnames(broad_Common)[tofix] = "X05689621"
+
+mayo_Common = mayo_Common[,match(colnames(broad_Common),colnames(mayo_Common))]
+colnames(mayo_Common)
+colnames(broad_Common)
+yb_Corr = cor(mayo_Common,broad_Common,method = "spearman")
+heatmap.2(yb_Corr,trace="none",breaks = seq(0.80,1,0.01),margins = c(7,7),main = "Mayo-Broad")
+```
+3. Broad-MSSM
+```{r}
+mssm_Common = mssm_Common[,match(colnames(broad_Common),colnames(mssm_Common))]
+colnames(mssm_Common)
+colnames(broad_Common)
+mb_Corr = cor(mssm_Common,broad_Common,method = "spearman")
+heatmap.2(mb_Corr,trace="none",breaks = seq(0.80,1,0.01),margins = c(7,7),main = "Broad-MSSM")
+```
+
+# All together now
+```{r}
+plot(density(mm_Corr), xlim = range(0.8,1), ylim = range(0,45))
+lines(density(diag((mm_Corr))),lty = 2)
+lines(density(yb_Corr),col = "red")
+lines(density(diag(yb_Corr)),col = "red", lty = 2)
+lines(density(mb_Corr),col = "blue")
+lines(density(diag(mb_Corr)),col = "blue", lty = 2)
+legend("topright",legend = c("MSSM-Mayo","Mayo-Broad","Broad-MSSM"),col = c("black","red","blue"),pch = 15)
+
+
+removeSelf=function(inSelf){
+  selfMatches = diag(inSelf)
+  temp = cbind(diag(x=selfMatches),matrix(0,nrow=10,ncol = 0))
+  return(inSelf - temp)
+}
+boxplot(as.vector(removeSelf(mm_Corr)), diag(mm_Corr), as.vector(removeSelf(yb_Corr)),diag(yb_Corr),as.vector(removeSelf(mb_Corr)),diag(mb_Corr),varwidth = TRUE,ylim = range(0.8,1), col = c("goldenrod1","goldenrod1","red","red","blue","blue"),names = c("MSSM-Mayo","MSSM-Mayo", "Mayo-Broad","Mayo-Broad","Broad-MSSM","Broad-MSSM"))
+```
+
+PCA, sample clustering, etc.
+```{r}
+mssm_temp.dge = mssmR.dge[which(rownames(mssmR.dge) %in% mmb),]
+mssm_temp.dge = mssm_temp.dge[order(rownames(mssm_temp.dge)),]
+colnames(mssm_temp.dge) = paste("M",colnames(mssm_temp.dge),sep = "_")
+mssm_temp.dge = mssm_temp.dge[,order(colnames(mssm_temp.dge))]
+mayo_temp.dge = mayoR.dge[which(rownames(mayoR.dge) %in% mmb),]
+mayo_temp.dge = mayo_temp.dge[order(rownames(mayo_temp.dge)),]
+tofix = which(colnames(mayo_temp.dge) == "X05689621")
+colnames(mayo_temp.dge)[tofix] = "X5689621"
+colnames(mayo_temp.dge) = paste("Y",colnames(mayo_temp.dge),sep = "_")
+mayo_temp.dge = mayo_temp.dge[,order(colnames(mayo_temp.dge))]
+broad_temp.dge = broadR.dge[which(rownames(broadR.dge) %in% mmb),]
+broad_temp.dge = broad_temp.dge[order(rownames(broad_temp.dge)),]
+colnames(broad_temp.dge) = paste("B",colnames(broad_temp.dge),sep = "_")
+broad_temp.dge = broad_temp.dge[,order(colnames(broad_temp.dge))]
+all.dge = DGEList(counts = cbind(getCounts(mssm_temp.dge),getCounts(mayo_temp.dge),getCounts(broad_temp.dge)))
+
+fm.pca = FM_PCA(in.voom = voom_on_mean(all.dge,plot = FALSE),plot = TRUE)
+
+Dx = rep(metadata$PathoAD[match(substr(colnames(mssm_temp.dge),start = 4,stop = 15),metadata$Projid..txt.)]+1,3)
+DxColors = c("slateblue1","sandybrown")
+SampColors = rep(brewer.pal(n=10,name="Paired"),3)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = SampColors)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = SampColors)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = SampColors)
+
+```
+
+DE analysis of count data.
+Conduct differential expression analysis between sites and analyze the source of the false positives identified (if any).
