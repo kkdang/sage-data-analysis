@@ -64,7 +64,7 @@ addBiotype=function(inCounts,gene=TRUE){
     biotypes = getBM(attributes=c("ensembl_gene_id", "gene_biotype"),filters="ensembl_gene_id",values=rownames(inCounts), mart=Hs)
   }
   else {
-    biotypes = getBM(attributes=c("ensembl_transcript_id", "transcript_biotype"),filters="ensembl_transcript_id",values=rownames(inDGE), mart=Hs)
+    biotypes = getBM(attributes=c("ensembl_transcript_id", "transcript_biotype"),filters="ensembl_transcript_id",values=rownames(inCounts), mart=Hs)
   }
   inCounts$biotype = rep("NA", nrow(inCounts))
   inCounts$biotype = biotypes$gene_biotype[match(rownames(inCounts), biotypes$ensembl_gene_id)]
@@ -74,13 +74,14 @@ addBiotype=function(inCounts,gene=TRUE){
 addEntrez=function(inCounts,gene=TRUE){
   if (gene==TRUE){
     entrez = getBM(attributes=c("ensembl_gene_id", "entrezgene"),filters="ensembl_gene_id",values=rownames(inCounts), mart=Hs)
+    inCounts$entrez = rep("NA", nrow(inCounts))
+    inCounts$entrez = entrez$entrezgene[match(rownames(inCounts), entrez$ensembl_gene_id)]
   }
   else {
-    # need to write this condition
-#    biotypes = getBM(attributes=c("ensembl_transcript_id", "transcript_biotype"),filters="ensembl_transcript_id",values=rownames(inDGE), mart=Hs)
+   entrez = getBM(attributes=c("ensembl_transcript_id", "entrezgene"),filters="ensembl_transcript_id",values=rownames(inCounts), mart=Hs)
+   inCounts$entrez = rep("NA", nrow(inCounts))
+   inCounts$entrez = entrez$entrezgene[match(rownames(inCounts), entrez$ensembl_transcript_id)]
   }
-  inCounts$entrez = rep("NA", nrow(inCounts))
-  inCounts$entrez = entrez$entrezgene[match(rownames(inCounts), entrez$ensembl_gene_id)]
   return(inCounts)
 }
 
@@ -201,14 +202,14 @@ plotSFfractionalResults=function(inSF){
   par(op)
 }
 
-FM_PCA=function(in.voom,plot=TRUE){
-  result.prc = PCA(X = t(in.voom),scale.unit = TRUE,ncp = 5,graph = FALSE)
+FM_PCA=function(in.data,plot=TRUE){
+  result.prc = PCA(X = t(in.data),scale.unit = TRUE,ncp = 5,graph = FALSE)
   if (plot){ barplot(result.prc$eig$"percentage of variance"[1:20], ylab = "% variance") } 
   return(result.prc)
 }
 
-prcomp_PCA=function(in.voom,plot=TRUE){
-  prc = prcomp(t(in.voom),center=TRUE,scale=TRUE,retx = TRUE)
+prcomp_PCA=function(in.data,plot=TRUE){
+  prc = prcomp(t(in.data),center=TRUE,scale=TRUE,retx = TRUE)
   if (plot) { barplot((prc$sdev^2/sum(prc$sdev^2))[1:20], ylab = "fraction variance") } 
   return(prc)
 }
