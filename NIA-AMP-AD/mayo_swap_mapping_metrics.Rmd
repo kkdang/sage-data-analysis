@@ -1,0 +1,75 @@
+---
+title: "swap_mapping_metrics.Rmd"
+author: "Kristen Dang"
+date: "October 6, 2015"
+output: 
+  html_document: 
+    fig_height: 7
+---
+
+```{r}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(edgeR)
+library(gplots)
+library(RColorBrewer)
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
+```
+
+
+# Trim metrics
+```{r}
+fastqTrimMetrics = synTableQuery("SELECT * FROM syn4616136")
+colnames(fastqTrimMetrics@values)
+plot(fastqTrimMetrics@values$R1_num_empty_reads[32:50]/fastqTrimMetrics@values$R1_num_reads[32:50], ylab = "R1 fraction to short after trim", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topright",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(fastqTrimMetrics@values$R1_num_trimmed_bases[32:50], ylab = "R1 fraction trimmed bases", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(fastqTrimMetrics@values$R2_num_empty_reads[32:50]/fastqTrimMetrics@values$R2_num_reads[32:50], ylab = "R2 fraction to short after trim", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(fastqTrimMetrics@values$R2_num_trimmed_bases[32:50], ylab = "R2 fraction trimmed bases", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+```
+
+# Alignment metrics
+```{r}
+starAlignMetrics = synTableQuery("SELECT * FROM syn4584502")
+colnames(starAlignMetrics@values)
+plot(starAlignMetrics@values$`Uniq-reads-PCT`[32:50], ylab = "Uniquely mapped", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("bottomleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(starAlignMetrics@values$`Number-reads`[32:50], ylab = "Number of reads", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topright",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(starAlignMetrics@values$`Ave-read-length`[32:50], ylab = "read length", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(starAlignMetrics@values$`Reads-mapped-to-multiple-loci-PCT`[32:50], ylab = "Multiple loci", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(starAlignMetrics@values$`Reads-unmapped-other-PCT`[32:50], ylab = "Unmapped, not mismatch", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topright",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(starAlignMetrics@values$`Reads-unmapped-too-short-PCT`[32:50], ylab = "Unmapped, too short", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topright",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+plot(starAlignMetrics@values$`Total-splices`[32:50], ylab = "Total splices", col = c(rep("goldenrod",9),rep("red",10)),pch = 16)
+legend("topleft",legend = c("MSSM","Mayo"),col = c("goldenrod","red","blue"),pch=16)
+```
+
+# Picard gene model metrics
+```{r}
+picardGeneMetrics = synTableQuery("SELECT * FROM syn4597336")
+colnames(picardGeneMetrics@values)
+plot(picardGeneMetrics@values$PCT_INTERGENIC_BASES[32:50],col = "plum4",pch = 16,type = "o",ylab = "fraction reads", ylim = range(0,1))
+lines(picardGeneMetrics@values$PCT_INTRONIC_BASES[32:50],col = "slateblue",pch = 16,type = "o")
+lines(picardGeneMetrics@values$PCT_UTR_BASES[32:50],col = "seagreen3",pch = 16,type = "o")
+lines(picardGeneMetrics@values$PCT_CODING_BASES[32:50],col = "darkgoldenrod2",pch = 16,type = "o")
+lines(picardGeneMetrics@values$PCT_RIBOSOMAL_BASES[32:50],col = "orangered",pch = 16,type = "o")
+legend("topright",legend = c("intergenic","intronic","UTR","coding","ribosomal"),col = c("plum4","slateblue","seagreen3","darkgoldenrod2","orangered"),pch=16)
+```
+
+# featurecounts assignment metrics
+```{r}
+fcAssignMetrics = synTableQuery("SELECT * FROM syn4601557")
+colnames(fcAssignMetrics@values)
+z = substr(fcAssignMetrics@values$Sample[32:50],start = 1,stop = 8)
+
+barplot(t(data.matrix(fcAssignMetrics@values[32:50,3:7])),beside = FALSE,las = 2,names.arg = z,legend.text = colnames(fcAssignMetrics@values[32:50,3:7]),col = brewer.pal(n=5,name="Accent"),main = "read counting results")
+
+```
