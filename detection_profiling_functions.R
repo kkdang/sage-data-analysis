@@ -11,8 +11,12 @@ sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 ## Detection analysis of biotypes
 
 ### Consolidating and removing some Ensembl biotypes
-simplifyBiotypeCategories=function(inData.dge,biomart=Hs){
-  paloCounts = addBiotype(as.data.frame(getCounts(inData.dge)))
+simplifyBiotypeCategories=function(inData,biomart=Hs){
+  # input "inData" is DGEList or raw counts matrix
+  if is(inData.dge, DGEList){
+    paloCounts = addBiotype(as.data.frame(getCounts(inData)))
+  }
+  else { paloCounts = addBiotype(as.data.frame(inData)) }
   origBiotypeCounts = table(getBM(attributes=c("ensembl_gene_id", "gene_biotype"), mart=biomart)[,2])
   # Consolidate total counts of all pseudogene categories into a single category
   allpseudo = grep(pattern = "pseudogene",x = names(origBiotypeCounts))
