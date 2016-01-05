@@ -13,7 +13,7 @@ sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 ### Consolidating and removing some Ensembl biotypes
 simplifyBiotypeCategories=function(inData,biomart=Hs){
   # input "inData" is DGEList or raw counts matrix
-  if is(inData.dge, DGEList){
+  if (class(inData) == "DGEList"){
     paloCounts = addBiotype(as.data.frame(getCounts(inData)))
   }
   else { paloCounts = addBiotype(as.data.frame(inData)) }
