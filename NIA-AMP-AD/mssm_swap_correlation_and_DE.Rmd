@@ -1,0 +1,184 @@
+---
+title: "swap_correlation_and_DE.Rmd"
+author: "Kristen Dang"
+date: "Jan. 18, 2016"
+output: 
+  html_document: 
+    fig_height: 7
+---
+
+
+
+```{r}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(edgeR)
+library(gplots)
+library(RColorBrewer)
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+```
+
+# Get data
+```{r cache=TRUE}
+sourceRepoFile(sageCode, "NIA-AMP-AD/mssm_swap_preliminary.R")
+# Fix mayo file names so they match the metadata
+match(colnames(mssmR.dge), metadata$Sample.ID)
+colnames(mayoR.dge)
+x = paste("BM_10_", substr(colnames(mayoR.dge),start = 4,6), sep = "")
+colnames(mayoR.dge) = x
+colnames(mayoR.dge)
+colnames(mssmR.dge)
+
+x = paste("BM_10_", substr(colnames(mayoR_counts),start = 4,6), sep = "")
+colnames(mayoR_counts) = x
+colnames(mayoR_counts)
+
+metadata$SEX = as.factor(metadata$SEX)
+```
+
+
+# Correlation analysis of processed data:
+```{r}
+# Get common set of genes to use
+mssm_mayo = intersect(rownames(mssmR_counts),rownames(mayoR_counts))
+mssm_Common = mssmR_counts[which(rownames(mssmR_counts) %in% mssm_mayo),]
+mssm_Common = mssm_Common[order(rownames(mssm_Common)),]
+mayo_Common = mayoR_counts[which(rownames(mayoR_counts) %in% mssm_mayo),]
+mayo_Common = mayo_Common[order(rownames(mayo_Common)),]
+
+tail(rownames(mssm_Common))
+tail(rownames(mayo_Common))
+dim(mssm_Common)
+dim(mayo_Common)
+```
+
+How well do samples correlate to each other across sites? Plot distribution of per-sample correlations across sites. Compare to correlation within sites.
+
+1. Mayo-MSSM
+
+```{r}
+mssm_Common = mssm_Common[,match(colnames(mayo_Common),colnames(mssm_Common))]
+colnames(mssm_Common)
+colnames(mayo_Common)
+mm_Corr = cor(mssm_Common,mayo_Common,method = "spearman")
+heatmap.2(mm_Corr,trace="none",margins = c(7,7), main = "Mayo-MSSM",breaks = seq(0.8,0.95,0.01))
+```
+
+# All together now
+```{r}
+plot(density(mm_Corr), ylim = range(0,45), main = "Mayo-MSSM")
+lines(density(diag((mm_Corr))),lty = 2)
+legend("topright",legend = c("all", "self"),lty = c(1,2))
+
+
+removeSelf=function(inSelf){
+  selfMatches = diag(inSelf)
+  temp = cbind(diag(x=selfMatches),matrix(0,nrow=9,ncol = 0))
+  return(inSelf - temp)
+}
+boxplot(as.vector(removeSelf(mm_Corr)), diag(mm_Corr), varwidth = TRUE,ylim = range(0.75,1), col = c("goldenrod1","goldenrod1"),names = c("non-self","self"))
+```
+
+PCA, sample clustering, etc.
+```{r}
+mssm_temp.dge = mssmR.dge[which(rownames(mssmR.dge) %in% mssm_mayo),]
+mssm_temp.dge = mssm_temp.dge[order(rownames(mssm_temp.dge)),]
+colnames(mssm_temp.dge) = paste("M",colnames(mssm_temp.dge),sep = "_")
+mssm_temp.dge = mssm_temp.dge[,order(colnames(mssm_temp.dge))]
+mayo_temp.dge = mayoR.dge[which(rownames(mayoR.dge) %in% mssm_mayo),]
+mayo_temp.dge = mayo_temp.dge[order(rownames(mayo_temp.dge)),]
+colnames(mayo_temp.dge) = paste("Y",colnames(mayo_temp.dge),sep = "_")
+mayo_temp.dge = mayo_temp.dge[,order(colnames(mayo_temp.dge))]
+all.dge = DGEList(counts = cbind(getCounts(mssm_temp.dge),getCounts(mayo_temp.dge)))
+
+fm.pca = FM_PCA(in.data = cpm(all.dge,normalized.lib.sizes=TRUE,log=TRUE),plot = TRUE)
+
+Dx = as.numeric(as.factor(rep(metadata$CDR[match(substr(colnames(mssm_temp.dge),start = 3,stop = 15),metadata$Sample.ID)],2)))
+Dx = Dx[-16]
+DxColors = brewer.pal(5, 'YlOrRd')
+SampColors = rep(brewer.pal(n=10,name="Paired"),2)
+SampColors = SampColors[-16]
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8)
+
+op = par(bg = "gray")
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,col.ind = DxColors[Dx], axes = c(2,3))
+legend("bottomright",legend = c(0,1,2,3,5),pch = 16, col = DxColors )
+par(op)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = SampColors)
+
+
+op = par(bg = "gray")
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,col.ind = DxColors[Dx], axes = c(3,4))
+legend("bottomright",legend = c(0,1,2,3,5),pch = 16, col = DxColors )
+par(op)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = SampColors)
+
+
+op = par(bg = "gray")
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = DxColors[Dx])
+legend("bottomright",legend = c(0,1,2,3,5),pch = 16, col = DxColors )
+par(op)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = SampColors)
+
+```
+
+
+Model selection comparing a series of non-nested, 1-factor models. 
+```{r}
+metadata$CDR = as.factor(metadata$CDR)
+
+combinedMeta = rbind(metadata[match(colnames(mssmR.dge), metadata$Sample.ID),], metadata[match(colnames(mssmR.dge), metadata$Sample.ID),])
+combinedMeta$site = c(rep("MSSM",10),rep("Mayo",10))
+combinedMeta$CERJ = as.factor(combinedMeta$CERJ)
+combinedMeta$CDR = as.factor(combinedMeta$CDR)
+combinedMeta$SEX = as.factor(combinedMeta$SEX)
+combinedMeta$NP.1 = as.factor(combinedMeta$NP.1)
+combinedMeta$bbscore = as.factor(combinedMeta$bbscore)
+combinedMeta$site = as.factor(combinedMeta$site)
+toRemove = setdiff(combinedMeta$Sample.ID, colnames(mayoR.dge))
+x = which(combinedMeta$Sample.ID == toRemove)
+combinedMeta = combinedMeta[-x[2],]
+
+design = model.matrix(~CDR+CERJ+SEX+PMI+NP.1+bbscore+site,data = combinedMeta)
+rownames(design) = c(paste("M_",combinedMeta$Sample.ID[1:10],sep = ""),paste("Y_",combinedMeta$Sample.ID[11:19],sep = ""))
+all.dge = all.dge[,match(colnames(all.dge),rownames(design))]
+
+makeModels=function(){
+
+  CDR = model.matrix(~CDR,data = combinedMeta)
+  CERJ = model.matrix(~CERJ,data = combinedMeta)
+  SEX = model.matrix(~SEX,data = combinedMeta)
+#  Age_death = model.matrix(~Age_death,data = combinedMeta)
+  bbscore = model.matrix(~bbscore,data = combinedMeta) 
+  PMI = model.matrix(~PMI,data = combinedMeta)
+  NP = model.matrix(~NP.1,data = combinedMeta)
+  site = model.matrix(~site,data = combinedMeta)
+
+  designlist = list(CDR=CDR,CERJ=CERJ,SEX=SEX,bbscore=bbscore,NP=NP,PMI=PMI,site=site)
+  return(designlist)
+}
+
+allModels=makeModels()
+chooseModel = selectModel(voom(all.dge),allModels,criterion = "bic")
+x = table(chooseModel$pref)
+chooseModel = selectModel(voom(all.dge),allModels,criterion = "aic")
+votes = rbind(x,table(chooseModel$pref))
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection for transcripts", cex.names = 0.7, las = 2)
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection for transcripts", cex.names = 0.7, las = 2,ylim = range(0,5000))
+```
+
+ANOVA of count data. For each transcript, the percentage of variation explained by each factor is calculated dividing the sum of squares by the total sum of squares. 
+```{r echo=FALSE}
+# fracVar  = matrix(NA,nrow = nrow(all.dge),ncol=length(allModels)+1)
+# all.cpm = cpm(all.dge,normalized.lib.sizes = TRUE,log = TRUE)
+# for (i in 1:nrow(all.cpm)){
+#   geneFit = lm(all.cpm[i,]~Cogdx+PathoAD+Sex+Age_death+RIN+PMI+nanodrop.ng.ul+site,data = combinedMeta)
+#   x = summary(aov(geneFit))
+#   fracVar[i,] = x[[1]]$`Sum Sq` / sum(x[[1]]$`Sum Sq`)
+# }
+# op = par(mar=c(7,4,4,2)+0.1)
+# boxplot(fracVar,names=rownames(x[[1]]),las = 2)
+# boxplot(fracVar,names=rownames(x[[1]]),las = 2,ylim = range(0,0.3),outline =FALSE)
+# par(op)
+
+```
