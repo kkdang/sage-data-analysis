@@ -8,6 +8,12 @@ mayoData = read.table(getFileLocation(mayo),row.names = 1)
 mssm = synGet('syn5583762')
 mssmData = read.table(getFileLocation(mssm), row.names = 1)
 
+# Truncate the gene names at the "."
+x = sapply(strsplit(rownames(mssmData), "[.]"), function(x){ return(x[1]) } )
+rownames(mssmData) = x
+x = sapply(strsplit(rownames(mayoData), "[.]"), function(x){ return(x[1]) } )
+rownames(mayoData) = x
+
 
 metadataEnt = synGet("syn3205337")
 metadata = read.delim(getFileLocation(metadataEnt))
