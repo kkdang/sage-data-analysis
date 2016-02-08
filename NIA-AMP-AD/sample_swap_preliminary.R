@@ -40,3 +40,12 @@ mssmR_counts = cpm(mssmR.dge,log = TRUE,normalized.lib.sizes = TRUE)
 broadR.dge = DGEList(counts=broadData,remove.zeros = TRUE)
 broadR.dge = calcNormFactors(broadR.dge)
 broadR_counts = cpm(broadR.dge,log = TRUE,normalized.lib.sizes = TRUE)
+
+mayoPalx.dge = calcNormFactors(filterByFractionPresent(inDGE = mayoR.dge,fraction = 0.6))
+mssmPalx.dge = calcNormFactors(filterByFractionPresent(inDGE = mssmR.dge,fraction = 0.6))
+broadPalx.dge = calcNormFactors(filterByFractionPresent(inDGE = broadR.dge,fraction = 0.6))
+
+mayoCountsPalx = cpm(mayoPalx.dge,log = TRUE,normalized.lib.sizes = TRUE)
+mssmCountsPalx = cpm(mssmPalx.dge,log = TRUE,normalized.lib.sizes = TRUE)
+broadCountsPalx = cpm(broadPalx.dge,log = TRUE,normalized.lib.sizes = TRUE)
+

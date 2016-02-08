@@ -18,7 +18,6 @@ rownames(mayoData) = x
 metadataEnt = synGet("syn3205337")
 metadata = read.delim(getFileLocation(metadataEnt))
 
-# Fix the one mayo filename that doesn't have "TCX" in name
 colnames(mssmData)
 match(colnames(mssmData), metadata$Sample.ID)
 colnames(mayoData)
@@ -36,3 +35,11 @@ mayoR_counts = cpm(mayoR.dge,log = TRUE,normalized.lib.sizes = TRUE)
 mssmR.dge = DGEList(counts=mssmData,remove.zeros = TRUE)
 mssmR.dge = calcNormFactors(mssmR.dge)
 mssmR_counts = cpm(mssmR.dge,log = TRUE,normalized.lib.sizes = TRUE)
+
+rm(mssmData, mayoData)
+
+mayoPalx.dge = calcNormFactors(filterByFractionPresent(inDGE = mayoR.dge,fraction = 0.6))
+mssmPalx.dge = calcNormFactors(filterByFractionPresent(inDGE = mssmR.dge,fraction = 0.6))
+
+mayoCountsPalx = cpm(mayoPalx.dge,log = TRUE,normalized.lib.sizes = TRUE)
+mssmCountsPalx = cpm(mssmPalx.dge,log = TRUE,normalized.lib.sizes = TRUE)
