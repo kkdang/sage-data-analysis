@@ -34,5 +34,11 @@ rm(noMatch, noMatch2, lookup, lookupEnt)
 colnames(estReads) = lookupRev$UDF.Investigator.Sample.Name[match(colnames(estReads), paste("X", lookupRev$Sample.Name,sep = ""))]
 
 
-save(estReads, file = getFileLocation(dataEntity), compress="gzip")
+
+outFile = gzfile(getFileLocation(dataEntity), "w")
+write.csv(estReads, outFile)
+close(outFile)
+
+#save(estReads, file = getFileLocation(dataEntity), compress="gzip")
+#write.csv(estReads, file = getFileLocation(dataEntity),)
 dataEntity = synStore(dataEntity)
