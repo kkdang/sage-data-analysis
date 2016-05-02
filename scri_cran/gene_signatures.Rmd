@@ -13,9 +13,7 @@ library('rGithubClient')
 library('gplots')
 library('RColorBrewer')
 
-token = read.delim('~/Movies/rGHclient_token.txt',header = FALSE)
-setGithubToken(as.character(token[1,1]))
-sageCode = getRepo(repository="kkdang/sage-data-analysis")
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
 proteinCoding_genes = getByBiotype()
 cutoff = 0.05
@@ -97,7 +95,7 @@ computeFit=function(in.dge,design,inContrast=my.contrasts[,1],plotTitle=modelNam
   DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
   xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < pval]
   xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
-  plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+  plotMA(testResults$fit,status = xStatus,cex=c(0.5),legend = FALSE,col=c("green3"))
   print(length(which(DEgeneTable$adj.P.Val<pval)))
   return(DEgeneTable)
 }
@@ -109,12 +107,18 @@ computeFit=function(in.dge,design,inContrast=my.contrasts[,1],plotTitle=modelNam
 Case-control signatures 
 ```{r}
 modelName = "case-control + full"
-minimalSet = c("Age_mos.","Sex","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES")
+minimalSet = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
 ccModel = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = metadataMatching)
 rownames(ccModel) = colnames(pc_palx20.dge)
 my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
-results_ccFull = computeFit(pc_palx20.dge,design = ccModel)
+results_ccFull = computeFit(in.dge = pc_palx20.dge,design = ccModel)
 de_all = rownames(results_ccFull)[which(results_ccFull$adj.P.Val<cutoff)]
+
+# Save results of case-control comparison to Synapse
+# write.csv(x = results_ccFull,file = "sigGeneList_caseControl.csv",row.names = TRUE)
+# tmp = File(path = 'sigGeneList_caseControl.csv',synapseStore = TRUE,parentId='syn4957282')
+# tmp = synStore(entity = tmp)
+
 
 ```
 
@@ -337,7 +341,7 @@ par(op)
 
 
 Now looking at genes DE by phenotypic factors. 
-First looking for things with correlation to factor in cases only, separating on the 4 groups.
+First looking for things with correlation to factor in cases, separating on the 4 groups.
 ```{r}
 # Make case-only dataset
 in.dge = pc_palx20.dge[,-which(shortMeta$Sample_Type == "Control")]
