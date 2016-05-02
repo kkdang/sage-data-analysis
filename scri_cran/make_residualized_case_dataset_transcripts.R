@@ -39,8 +39,8 @@ palx5.dge = filterByFractionPresent(noOutliers.dge,fraction=0.05,minCount=3)
 palx5.dge = calcNormFactors(palx5.dge)
 cases.dge = palx5.dge[,-which(metadataMatching$Sample_Type == "Control")]
 dim(cases.dge)
-save(cases.dge,file = "transcripts_cases_DGE.Robj.bz2",compress = "bzip2")
-synStore(File(path = "transcripts_cases_DGE.Robj.bz2",parentId='syn2820780'),forceVersion=FALSE)
+#save(cases.dge,file = "transcripts_cases_DGE.Robj.bz2",compress = "bzip2")
+#synStore(File(path = "transcripts_cases_DGE.Robj.bz2",parentId='syn2820780'),forceVersion=FALSE)
 
 
 minimalSetNoSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","Initial_growth_duration_days")
@@ -58,10 +58,10 @@ tempModel = model.matrix(as.formula(paste("~",paste(minimalSetNoSex,collapse = "
 
 data.voom = voom(cases.dge,tempModel,plot=FALSE) 
 fit = lmFit(data.voom,tempModel)
-save(fit,file = "transcripts_resid_cases_pIGDD_fit.Robj.bz2",compress = "bzip2")
+#save(fit,file = "transcripts_resid_cases_pIGDD_fit.Robj.bz2",compress = "bzip2")
 resid = residuals(fit,y = data.voom)
-write.table(formatC(resid,digits=6,format="fg"),file = "transcripts_resid_cases_pIGDD.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = TRUE)
+#write.table(formatC(resid,digits=6,format="fg"),file = "transcripts_resid_cases_pIGDD.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = TRUE)
 
 ## Save data to Synapse
-synStore(File(path = "transcripts_resid_cases_pIGDD.tsv",parentId='syn4893931'))
-synStore(File(path = "transcripts_resid_cases_pIGDD_fit.Robj.bz2",parentId='syn4893931'))
+#synStore(File(path = "transcripts_resid_cases_pIGDD.tsv",parentId='syn4893931'))
+#synStore(File(path = "transcripts_resid_cases_pIGDD_fit.Robj.bz2",parentId='syn4893931'))
