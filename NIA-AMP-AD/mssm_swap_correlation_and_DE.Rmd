@@ -15,6 +15,8 @@ source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R'
 library(edgeR)
 library(gplots)
 library(RColorBrewer)
+library(nlme)
+library(lme4)
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 ```
 
@@ -27,11 +29,18 @@ colnames(mayoR.dge)
 x = paste("BM_10_", substr(colnames(mayoR.dge),start = 4,6), sep = "")
 colnames(mayoR.dge) = x
 colnames(mayoR.dge)
+x = paste("BM_10_", substr(colnames(mayoPalx.dge),start = 4,6), sep = "")
+colnames(mayoPalx.dge) = x
+colnames(mayoPalx.dge)
 colnames(mssmR.dge)
 
 x = paste("BM_10_", substr(colnames(mayoR_counts),start = 4,6), sep = "")
 colnames(mayoR_counts) = x
 colnames(mayoR_counts)
+
+x = paste("BM_10_", substr(colnames(mayoCountsPalx),start = 4,6), sep = "")
+colnames(mayoCountsPalx) = x
+colnames(mayoCountsPalx)
 
 metadata$SEX = as.factor(metadata$SEX)
 ```
@@ -50,6 +59,19 @@ tail(rownames(mssm_Common))
 tail(rownames(mayo_Common))
 dim(mssm_Common)
 dim(mayo_Common)
+
+
+
+mssm_mayoP = intersect(rownames(mssmCountsPalx),rownames(mayoCountsPalx))
+mssm_CommonP = mssmCountsPalx[which(rownames(mssmCountsPalx) %in% mssm_mayoP),]
+mssm_CommonP = mssm_CommonP[order(rownames(mssm_CommonP)),]
+mayo_CommonP = mayoCountsPalx[which(rownames(mayoCountsPalx) %in% mssm_mayoP),]
+mayo_CommonP = mayo_CommonP[order(rownames(mayo_CommonP)),]
+
+tail(rownames(mssm_CommonP))
+tail(rownames(mayo_CommonP))
+dim(mssm_CommonP)
+dim(mayo_CommonP)
 ```
 
 How well do samples correlate to each other across sites? Plot distribution of per-sample correlations across sites. Compare to correlation within sites.
@@ -62,6 +84,12 @@ colnames(mssm_Common)
 colnames(mayo_Common)
 mm_Corr = cor(mssm_Common,mayo_Common,method = "spearman")
 heatmap.2(mm_Corr,trace="none",margins = c(7,7), main = "Mayo-MSSM",breaks = seq(0.8,0.95,0.01))
+
+mssm_CommonP = mssm_CommonP[,match(colnames(mayo_CommonP),colnames(mssm_CommonP))]
+colnames(mssm_CommonP)
+colnames(mayo_CommonP)
+mm_CorrP = cor(mssm_CommonP,mayo_CommonP,method = "spearman")
+heatmap.2(mm_CorrP,trace="none",margins = c(7,7), main = "Mayo-MSSM PALX",breaks = seq(0.8,0.95,0.01))
 ```
 
 # All together now
@@ -70,26 +98,31 @@ plot(density(mm_Corr), ylim = range(0,45), main = "Mayo-MSSM")
 lines(density(diag((mm_Corr))),lty = 2)
 legend("topright",legend = c("all", "self"),lty = c(1,2))
 
+plot(density(mm_CorrP), ylim = range(0,45), main = "Mayo-MSSM PALX")
+lines(density(diag((mm_CorrP))),lty = 2)
+legend("topright",legend = c("all", "self"),lty = c(1,2))
 
 removeSelf=function(inSelf){
   selfMatches = diag(inSelf)
   temp = cbind(diag(x=selfMatches),matrix(0,nrow=9,ncol = 0))
   return(inSelf - temp)
 }
-boxplot(as.vector(removeSelf(mm_Corr)), diag(mm_Corr), varwidth = TRUE,ylim = range(0.75,1), col = c("goldenrod1","goldenrod1"),names = c("non-self","self"))
+boxplot(as.vector(removeSelf(mm_Corr)), diag(mm_Corr), varwidth = TRUE,ylim = range(0.75,1), col = c("goldenrod1","goldenrod1"),names = c("non-self","self"), main = "all genes")
+boxplot(as.vector(removeSelf(mm_CorrP)), diag(mm_CorrP), varwidth = TRUE,ylim = range(0.75,1), col = c("goldenrod1","goldenrod1"),names = c("non-self","self"), main = "filtered")
 ```
 
 PCA, sample clustering, etc.
 ```{r}
-mssm_temp.dge = mssmR.dge[which(rownames(mssmR.dge) %in% mssm_mayo),]
+mssm_temp.dge = mssmPalx.dge[which(rownames(mssmPalx.dge) %in% mssm_mayoP),]
 mssm_temp.dge = mssm_temp.dge[order(rownames(mssm_temp.dge)),]
 colnames(mssm_temp.dge) = paste("M",colnames(mssm_temp.dge),sep = "_")
 mssm_temp.dge = mssm_temp.dge[,order(colnames(mssm_temp.dge))]
-mayo_temp.dge = mayoR.dge[which(rownames(mayoR.dge) %in% mssm_mayo),]
+mayo_temp.dge = mayoPalx.dge[which(rownames(mayoPalx.dge) %in% mssm_mayoP),]
 mayo_temp.dge = mayo_temp.dge[order(rownames(mayo_temp.dge)),]
 colnames(mayo_temp.dge) = paste("Y",colnames(mayo_temp.dge),sep = "_")
 mayo_temp.dge = mayo_temp.dge[,order(colnames(mayo_temp.dge))]
 all.dge = DGEList(counts = cbind(getCounts(mssm_temp.dge),getCounts(mayo_temp.dge)))
+all.dge = calcNormFactors(all.dge)
 
 fm.pca = FM_PCA(in.data = cpm(all.dge,normalized.lib.sizes=TRUE,log=TRUE),plot = TRUE)
 
@@ -132,14 +165,17 @@ combinedMeta$site = c(rep("MSSM",10),rep("Mayo",10))
 combinedMeta$CERJ = as.factor(combinedMeta$CERJ)
 combinedMeta$CDR = as.factor(combinedMeta$CDR)
 combinedMeta$SEX = as.factor(combinedMeta$SEX)
+combinedMeta$Donor = as.factor(combinedMeta$Donor)
 combinedMeta$NP.1 = as.factor(combinedMeta$NP.1)
 combinedMeta$bbscore = as.factor(combinedMeta$bbscore)
 combinedMeta$site = as.factor(combinedMeta$site)
+combinedMeta$libsize = log10(all.dge$samples$lib.size[match(paste(c(rep("M_", 10), rep("Y_", 10)), combinedMeta$Sample.ID, sep = ""), rownames(all.dge$samples))])
+
 toRemove = setdiff(combinedMeta$Sample.ID, colnames(mayoR.dge))
 x = which(combinedMeta$Sample.ID == toRemove)
 combinedMeta = combinedMeta[-x[2],]
 
-design = model.matrix(~CDR+CERJ+SEX+PMI+NP.1+bbscore+site,data = combinedMeta)
+design = model.matrix(~CDR+CERJ+SEX+PMI+NP.1+bbscore+site+libsize,data = combinedMeta)
 rownames(design) = c(paste("M_",combinedMeta$Sample.ID[1:10],sep = ""),paste("Y_",combinedMeta$Sample.ID[11:19],sep = ""))
 all.dge = all.dge[,match(colnames(all.dge),rownames(design))]
 
@@ -153,8 +189,9 @@ makeModels=function(){
   PMI = model.matrix(~PMI,data = combinedMeta)
   NP = model.matrix(~NP.1,data = combinedMeta)
   site = model.matrix(~site,data = combinedMeta)
+  libsize = model.matrix(~libsize, data = combinedMeta)
 
-  designlist = list(CDR=CDR,CERJ=CERJ,SEX=SEX,bbscore=bbscore,NP=NP,PMI=PMI,site=site)
+  designlist = list(CDR=CDR,CERJ=CERJ,SEX=SEX,bbscore=bbscore,NP=NP,PMI=PMI,site=site,libsize=libsize)
   return(designlist)
 }
 
@@ -168,17 +205,78 @@ barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text =
 ```
 
 ANOVA of count data. For each transcript, the percentage of variation explained by each factor is calculated dividing the sum of squares by the total sum of squares. 
-```{r echo=FALSE}
-# fracVar  = matrix(NA,nrow = nrow(all.dge),ncol=length(allModels)+1)
-# all.cpm = cpm(all.dge,normalized.lib.sizes = TRUE,log = TRUE)
-# for (i in 1:nrow(all.cpm)){
-#   geneFit = lm(all.cpm[i,]~Cogdx+PathoAD+Sex+Age_death+RIN+PMI+nanodrop.ng.ul+site,data = combinedMeta)
-#   x = summary(aov(geneFit))
-#   fracVar[i,] = x[[1]]$`Sum Sq` / sum(x[[1]]$`Sum Sq`)
-# }
-# op = par(mar=c(7,4,4,2)+0.1)
-# boxplot(fracVar,names=rownames(x[[1]]),las = 2)
-# boxplot(fracVar,names=rownames(x[[1]]),las = 2,ylim = range(0,0.3),outline =FALSE)
-# par(op)
+```{r echo=FALSE,eval=FALSE}
+# Using a linear model without accounting for repeated measures
+fracVar  = matrix(NA,nrow = nrow(all.dge),ncol=length(allModels))
+all.cpm = cpm(all.dge,normalized.lib.sizes = TRUE,log = TRUE)
+for (i in 1:nrow(all.cpm)){
+  geneFit = lm(all.cpm[i,]~CDR+CERJ+SEX+bbscore+PMI+site+libsize,data = combinedMeta)
+  x = summary(aov(geneFit))
+  fracVar[i,] = x[[1]]$`Sum Sq` / sum(x[[1]]$`Sum Sq`)
+}
+op = par(mar=c(7,4,4,2)+0.1)
+boxplot(fracVar,names=rownames(x[[1]]),las = 2)
+boxplot(fracVar,names=rownames(x[[1]]),las = 2,ylim = range(0,0.3),outline =FALSE)
+par(op)
+
+
+# lme4 
+# Using a mixed model with subject as random (block) and site as fixed
+fracVar  = matrix(NA,nrow = nrow(all.dge),ncol=length(allModels))
+all.cpm = cpm(all.dge,normalized.lib.sizes = TRUE,log = TRUE)
+for (i in 1:nrow(all.cpm)){
+  geneFit = lmer(all.cpm[i,]~CDR+SEX+site+log(libsize) + (1|Sample.ID),data = combinedMeta)
+  x = anova(geneFit)
+  fracVar[i,] = x$`Sum Sq` / sum(x$`Sum Sq`)
+}
+boxplot(fracVar[,1:4],names=rownames(x),las = 2, ylim = range(0,1), ylab = "sum sq / sum(sum sq)")
+par(op)
+
+
+
+
+
+# Testing linear-mixed model with repeated measures in one gene
+geneFit.gd = groupedData(all.cpm[i,] ~ site + libsize | Sample.ID, data=cbind(combinedMeta, all.cpm[i,]), outer = ~ CDR+CERJ+SEX+bbscore+PMI, labels = list(y="expression"))
+x = which(colnames(geneFit.gd) %in% "all.cpm[i, ]")
+colnames(geneFit.gd)[x] = "expression"
+plot(geneFit.gd)
+geneFit2 = lme(fixed = expression ~ site+CDR+SEX+PMI+PlaqueMean+libsize, data = geneFit.gd, random = ~ libsize | Sample.ID)
+geneFit3 = update(geneFit2, random = ~ 1 | Sample.ID)
+anova(geneFit2, geneFit3)
+geneFit4 = update(geneFit2, random = ~ PMI | Sample.ID)
+anova(geneFit4, geneFit3)
+geneFit5 = update(geneFit2, random = ~ PlaqueMean | Sample.ID)
+anova(geneFit5, geneFit3)
+
+
+# Using lme with repeated measures
+elements = c("site","CDR","SEX","PMI","PlaqueMean","libsize")
+cAIC = matrix(NA, nrow = nrow(all.dge), ncol=(length(elements)+1))
+cBIC = matrix(NA, nrow = nrow(all.dge), ncol=(length(elements)+1))
+all.cpm = cpm(all.dge,normalized.lib.sizes = TRUE,log = TRUE)
+for (i in 1:nrow(all.cpm)){
+  geneFit.gd = groupedData(all.cpm[i,] ~ site + libsize | Sample.ID, data=cbind(combinedMeta, all.cpm[i,]), outer = ~ CDR+CERJ+SEX+bbscore+PMI, labels = list(y="expression"))
+   x = which(colnames(geneFit.gd) %in% "all.cpm[i, ]")
+  colnames(geneFit.gd)[x] = "expression"
+  try({
+    geneFit.full = lme(fixed = as.formula(paste("expression ~",paste(elements, collapse = "+"),sep = " ")), data = geneFit.gd, random = ~ 1 | Sample.ID)
+    for (j in 1:length(elements)) {
+      testFormula = as.formula(paste("expression ~",paste(elements[-j], collapse = "+"),sep = " "))
+      try({
+        geneFit.up = update(geneFit.full, fixed = testFormula)
+        cAIC[i,j] = summary(geneFit.up)$AIC
+        cBIC[i,j] = summary(geneFit.up)$BIC
+      },silent = T)
+    }
+    cAIC[i,(length(elements)+1)] = summary(geneFit.full)$AIC
+    cBIC[i,(length(elements)+1)] = summary(geneFit.full)$BIC
+  },silent = T)
+}
+op = par(mar=c(7,4,4,2)+0.1)
+boxplot(cAIC, names = c(elements, "full"), las = 2, main = "model comparison with AIC")
+boxplot(cBIC, names = c(elements, "full"), las = 2, main = "model comparison with BIC")
+#boxplot(fracVar,names=rownames(x[[1]]),las = 2,ylim = range(0,0.3),outline =FALSE)
+par(op)
 
 ```
