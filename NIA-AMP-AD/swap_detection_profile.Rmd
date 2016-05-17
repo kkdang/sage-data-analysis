@@ -24,14 +24,21 @@ sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
 # Detection analysis of biotypes
 ```{r}
 countsData = list(Mayo=mayoR.dge, MSSM=mssmR.dge,Broad=broadR.dge)
+pseudoFracCount = matrix(NA,nrow = 10,ncol = 3)
+pseudoFracDetected = c()
 for (i in 1:3){
   data.dge = countsData[[i]]
   paloResult = simplifyBiotypeCategories(data.dge,biomart=Hs)
-  paloCounts_wdetect = plotNumSamplesDetecting(paloResult$data)
+  paloCounts_wdetect = plotNumSamplesDetecting(paloResult$data,minCount = 2)
   paloRegressResults = runRegressionAndPlot(inCounts = paloCounts_wdetect,bioCategoryCounts = paloResult$observedCounts,totalBiotypeCounts = paloResult$totalCounts,inLibSize = data.dge$samples$lib.size)
   quadrantPlot(paloRegressResults,observedBioCounts = paloResult$observedCounts,plotTitle = names(countsData[i]))
+  x = which(names(paloResult$observedCounts) == "pseudogene")
+  pseudoFracDetected[i] = paloResult$observedCounts[x] / sum(paloResult$observedCounts)
+  pseudoFracCount[,i] = colSums(paloCounts_wdetect[which(paloCounts_wdetect$biotype == "pseudogene"),1:10]) / colSums(paloCounts_wdetect[,1:10])
 }
-
+names(pseudoFracDetected) = names(countsData)
+print(pseudoFracDetected)
+boxplot(pseudoFracCount,names = names(countsData),ylim = range(0,0.015),main = "pseudogene fraction of total data")
 
 ```
 

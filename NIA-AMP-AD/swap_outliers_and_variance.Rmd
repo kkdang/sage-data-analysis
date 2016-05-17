@@ -15,7 +15,7 @@ sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 ```
 
 # Get data
-```{r}
+```{r cache=TRUE}
 sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
 ```
 
@@ -39,7 +39,9 @@ for (i in 1:3){
   data.dge = countsData[[i]]
   DxStatus = metadata$PathoAD[match(colnames(data.dge),paste("X",metadata$Projid..txt.,sep = ""))]
 
-  fm.pca = FM_PCA(in.voom = voom_on_mean(data.dge,plot = FALSE),plot = TRUE)
+  
+#  fm.pca = FM_PCA(in.voom = voom_on_mean(data.dge,plot = FALSE),plot = TRUE)
+  fm.pca = FM_PCA(in.data = cpm(x = data.dge,normalized.lib.sizes = TRUE,log = TRUE),plot = TRUE)
   plotcols = c("orangered", "royalblue")
   plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(DxStatus))],label = "all",cex=0.8)
   
