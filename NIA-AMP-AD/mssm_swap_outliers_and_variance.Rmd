@@ -31,6 +31,10 @@ x = paste("BM_10_", substr(colnames(mayoR_counts),start = 4,6), sep = "")
 colnames(mayoR_counts) = x
 colnames(mayoR_counts)
 
+# x = paste("BM_10_", substr(colnames(mayoCountsPalx),start = 4,6), sep = "")
+# colnames(mayoCountsPalx) = x
+# colnames(mayoCountsPalx)
+
 
 metadata[match(colnames(mssmR.dge), metadata$Sample.ID),]
 ```
@@ -40,17 +44,21 @@ metadata[match(colnames(mssmR.dge), metadata$Sample.ID),]
 op = par(mar = c(12,4,4,8))
 mayoR.dend = heatmap.2(cor(mayoR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "Mayo",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
 mssmR.dend = heatmap.2(cor(mssmR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "MSSM",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
+
+mayoR.dend = heatmap.2(cor(mayoCountsPalx,method = "spearman"),dendrogram = "col",scale = "none",main = "Mayo filtered",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
+mssmR.dend = heatmap.2(cor(mssmCountsPalx,method = "spearman"),dendrogram = "col",scale = "none",main = "MSSM filtered",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
+
 par(op)
 ```
 
 
 PCA plots
 ```{r}
-countsData = list(Mayo=mayoR.dge, MSSM=mssmR.dge)
+countsData = list(Mayo=mayoR.dge, MSSM=mssmR.dge, Mayofiltered=mayoPalx.dge, MSSMfiltered=mssmPalx.dge)
 table(metadata$CDR)
 plotcols = brewer.pal(5, 'YlOrRd')
 
-for (i in 1:2){
+for (i in 1:4){
   data.dge = countsData[[i]]
   DxStatus = metadata$CDR[match(colnames(data.dge), metadata$Sample.ID)]
 
@@ -71,8 +79,8 @@ for (i in 1:2){
 
 Density plots
 ```{r}
-for (i in 1:2){
-  densityPlot(countsData[[i]], mainLabel="all genes, palx5",ub=0.35)
+for (i in 1:4){
+  densityPlot(countsData[[i]], mainLabel=names(countsData[i]),ub=0.35)
 }
 plot(1)
 ```
@@ -80,11 +88,11 @@ plot(1)
 
 Median - IQR
 ```{r}
-for (i in 1:2){
+for (i in 1:4){
   l_counts = cpm(countsData[[i]],normalized.lib.sizes = TRUE,log = TRUE)
   meds = apply(l_counts,MARGIN = 2,FUN = median,na.rm = TRUE)
   iqrs = apply(l_counts,MARGIN = 2,FUN = IQR, na.rm = TRUE)
-  plot(meds,iqrs, xlab = "medians", ylab = "interquartile ranges", main = "log2(CPM) protein-coding genes")
+  plot(meds,iqrs, xlab = "medians", ylab = "interquartile ranges", main = paste("log2(CPM) protein-coding genes",names(countsData[i]),sep = "\n"))
 }
 par(op)
 ```
@@ -95,7 +103,7 @@ Ygenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values=
 malesIDs = as.character(metadata$Sample.ID[which(metadata$SEX == "M")])
 
 
-for (i in 1:2){
+for (i in 1:4){
   l_counts = cpm(countsData[[i]],normalized.lib.sizes = TRUE,log = TRUE)
   y_exprs = colMeans(l_counts[which(rownames(l_counts) %in% Ygenes[,1]),])
   males = which(colnames(l_counts) %in% malesIDs)

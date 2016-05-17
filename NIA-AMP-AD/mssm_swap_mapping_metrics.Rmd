@@ -34,9 +34,9 @@ plotdata = fastqTrimMetrics@values[toKeep,]
 plotdata$site = c(rep("mayo",9),rep("mssm",10))
 
 
-beeswarm(R1_num_empty_reads~site, data=plotdata, ylab = "R1 fraction too short after trim", col = c("goldenrod","red"),pch = 16)
+beeswarm(R1_num_empty_reads~site, data=plotdata, ylab = "R1 number reads too short after trim", col = c("goldenrod","red"),pch = 16)
 beeswarm(R1_num_trimmed_bases~site, data=plotdata, ylab = "R1 fraction trimmed bases", col = c("goldenrod","red"),pch = 16)
-beeswarm(R2_num_empty_reads~site,data=plotdata, ylab = "R2 fraction too short after trim", col = c("goldenrod","red"),pch = 16)
+beeswarm(R2_num_empty_reads~site,data=plotdata, ylab = "R2 number reads too short after trim", col = c("goldenrod","red"),pch = 16)
 beeswarm(R2_num_trimmed_bases~site,data=plotdata, ylab = "R2 fraction trimmed bases", col = c("goldenrod","red"),pch = 16)
 
 ```
