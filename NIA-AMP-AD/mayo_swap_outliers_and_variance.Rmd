@@ -16,14 +16,13 @@ sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 
 # Get data
 ```{r cache=TRUE}
-source("~/Computing/sage-data-analysis/NIA-AMP-AD/mayo_swap_preliminary.R")
-#sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
+sourceRepoFile(sageCode, "NIA-AMP-AD/mayo_swap_preliminary.R")
 ```
 
 # Correlation heatmaps
 ```{r fig.height=7,fig.width=7}
 op = par(mar = c(12,4,4,8))
-mayoR.dend = heatmap.2(cor(mayoR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "Mayo",trace = "none",breaks = seq(0.85,1,0.001))
+mayoR.dend = heatmap.2(cor(mayoR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "Mayo",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
 mssmR.dend = heatmap.2(cor(mssmR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "MSSM",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
 par(op)
 ```

@@ -17,7 +17,7 @@ sourceRepoFile(sageCode, "detection_profiling_functions.R")
 
 # Get data
 ```{r}
-sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
+sourceRepoFile(sageCode, "NIA-AMP-AD/mayo_swap_preliminary.R")
 ```
 
 
@@ -43,4 +43,11 @@ boxplot(pseudoFracCount,names = names(countsData),ylim = range(0,0.015),main = "
 ```
 
 
+```{r}
+mssm_wbiotypes = addBiotype(inCounts = as.data.frame(getCounts(mssmR.dge)))
+table(mssm_wbiotypes$biotype)
+mssm_ribosomal = mssm_wbiotypes[which(mssm_wbiotypes$biotype == "rRNA"),1:9]
+colSums(mssm_ribosomal)
+colSums(mssm_ribosomal) / colSums(mssm_wbiotypes[,1:9])
+```
 
