@@ -1,0 +1,434 @@
+---
+title: "swap_correlation_and_DE.Rmd"
+author: "Kristen Dang"
+date: "October 5, 2015"
+output: 
+  html_document: 
+    fig_height: 7
+---
+
+
+
+```{r}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(edgeR)
+library(gplots)
+library(RColorBrewer)
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+```
+
+# Get data
+```{r cache=TRUE}
+sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
+metadata$Cogdx = as.factor(metadata$Cogdx)
+metadata$PathoAD = as.factor(metadata$PathoAD)
+metadata$Sex = as.factor(metadata$Sex)
+```
+
+
+# Correlation analysis of processed data:
+```{r}
+# Get common set of genes to use
+mssm_mayo = intersect(rownames(mssmCountsPalx),rownames(mayoCountsPalx))
+mmb = intersect(mssm_mayo,rownames(broadCountsPalx))
+mssm_Common = mssmCountsPalx[which(rownames(mssmCountsPalx) %in% mmb),]
+mssm_Common = mssm_Common[order(rownames(mssm_Common)),]
+mayo_Common = mayoCountsPalx[which(rownames(mayoCountsPalx) %in% mmb),]
+mayo_Common = mayo_Common[order(rownames(mayo_Common)),]
+broad_Common = broadCountsPalx[which(rownames(broadCountsPalx) %in% mmb),]
+broad_Common = broad_Common[order(rownames(broad_Common)),]
+
+tail(rownames(mssm_Common))
+tail(rownames(mayo_Common))
+tail(rownames(broad_Common))
+dim(mssm_Common)
+dim(mayo_Common)
+dim(broad_Common)
+
+```
+
+How well do samples correlate to each other across sites? Plot distribution of per-sample correlations across sites. Compare to correlation within sites.
+
+1. Mayo-MSSM
+
+```{r}
+tofix = which(colnames(mssm_Common) == "X5689621")
+colnames(mssm_Common)[tofix] = "X05689621"
+
+mssm_Common = mssm_Common[,match(colnames(mayo_Common),colnames(mssm_Common))]
+colnames(mssm_Common)
+colnames(mayo_Common)
+mm_Corr = cor(mssm_Common,mayo_Common,method = "spearman")
+heatmap.2(mm_Corr,trace="none",breaks = seq(0.80,0.95,0.01),margins = c(7,7), main = "Mayo-MSSM")
+```
+
+2. Mayo-Broad
+
+```{r}
+tofix = which(colnames(broad_Common) == "X5689621")
+colnames(broad_Common)[tofix] = "X05689621"
+
+mayo_Common = mayo_Common[,match(colnames(broad_Common),colnames(mayo_Common))]
+colnames(mayo_Common)
+colnames(broad_Common)
+yb_Corr = cor(mayo_Common,broad_Common,method = "spearman")
+heatmap.2(yb_Corr,trace="none",breaks = seq(0.80,1,0.01),margins = c(7,7),main = "Mayo-Broad")
+```
+
+3. Broad-MSSM
+
+```{r}
+mssm_Common = mssm_Common[,match(colnames(broad_Common),colnames(mssm_Common))]
+colnames(mssm_Common)
+colnames(broad_Common)
+mb_Corr = cor(mssm_Common,broad_Common,method = "spearman")
+heatmap.2(mb_Corr,trace="none",breaks = seq(0.80,1,0.01),margins = c(7,7),main = "Broad-MSSM")
+```
+
+# All together now
+```{r}
+plot(density(mm_Corr), xlim = range(0.8,1), ylim = range(0,45))
+lines(density(diag((mm_Corr))),lty = 2)
+lines(density(yb_Corr),col = "red")
+lines(density(diag(yb_Corr)),col = "red", lty = 2)
+lines(density(mb_Corr),col = "blue")
+lines(density(diag(mb_Corr)),col = "blue", lty = 2)
+legend("topright",legend = c("MSSM-Mayo","Mayo-Broad","Broad-MSSM"),col = c("black","red","blue"),pch = 15)
+
+
+removeSelf=function(inSelf){
+  selfMatches = diag(inSelf)
+  temp = cbind(diag(x=selfMatches),matrix(0,nrow=10,ncol = 0))
+  return(inSelf - temp)
+}
+boxplot(as.vector(removeSelf(mm_Corr)), diag(mm_Corr), as.vector(removeSelf(yb_Corr)),diag(yb_Corr),as.vector(removeSelf(mb_Corr)),diag(mb_Corr),varwidth = TRUE,ylim = range(0.8,1), col = c("goldenrod1","goldenrod1","red","red","blue","blue"),names = c("MSSM-Mayo","MSSM-Mayo", "Mayo-Broad","Mayo-Broad","Broad-MSSM","Broad-MSSM"))
+```
+
+PCA, sample clustering, etc.
+```{r}
+mssm_temp.dge = mssmPalx.dge[which(rownames(mssmPalx.dge) %in% mmb),]
+mssm_temp.dge = mssm_temp.dge[order(rownames(mssm_temp.dge)),]
+colnames(mssm_temp.dge) = paste("M",colnames(mssm_temp.dge),sep = "_")
+mssm_temp.dge = mssm_temp.dge[,order(colnames(mssm_temp.dge))]
+mayo_temp.dge = mayoPalx.dge[which(rownames(mayoPalx.dge) %in% mmb),]
+mayo_temp.dge = mayo_temp.dge[order(rownames(mayo_temp.dge)),]
+tofix = which(colnames(mayo_temp.dge) == "X05689621")
+colnames(mayo_temp.dge)[tofix] = "X5689621"
+colnames(mayo_temp.dge) = paste("Y",colnames(mayo_temp.dge),sep = "_")
+mayo_temp.dge = mayo_temp.dge[,order(colnames(mayo_temp.dge))]
+broad_temp.dge = broadPalx.dge[which(rownames(broadPalx.dge) %in% mmb),]
+broad_temp.dge = broad_temp.dge[order(rownames(broad_temp.dge)),]
+colnames(broad_temp.dge) = paste("B",colnames(broad_temp.dge),sep = "_")
+broad_temp.dge = broad_temp.dge[,order(colnames(broad_temp.dge))]
+all.dge = DGEList(counts = cbind(getCounts(mssm_temp.dge),getCounts(mayo_temp.dge),getCounts(broad_temp.dge)))
+
+fm.pca = FM_PCA(in.data = cpm(all.dge,normalized.lib.sizes=TRUE,log=TRUE),plot = TRUE)
+
+Dx = rep(as.numeric(metadata$PathoAD[match(substr(colnames(mssm_temp.dge),start = 4,stop = 15),metadata$Projid..txt.)]),3)
+DxColors = c("slateblue1","sandybrown")
+SampColors = rep(brewer.pal(n=10,name="Paired"),3)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = SampColors)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = SampColors)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = DxColors[Dx])
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = SampColors)
+
+```
+
+
+Model selection comparing a series of non-nested, 1-factor models. 
+```{r}
+combinedMeta = rbind(metadata,metadata,metadata)
+combinedMeta$site = c(rep("MSSM",10),rep("Mayo",10),rep("Broad",10))
+combinedMeta$Cogdx = as.factor(combinedMeta$Cogdx)
+combinedMeta$PathoAD = as.factor(combinedMeta$PathoAD)
+combinedMeta$Sex = as.factor(combinedMeta$Sex)
+combinedMeta$site = as.factor(combinedMeta$site)
+design = model.matrix(~Cogdx+PathoAD+Sex+Age_death+RIN+PMI+nanodrop.ng.ul+site,data = combinedMeta)
+rownames(design) = c(paste("M_X",metadata$Projid..txt.,sep = ""),paste("Y_X",metadata$Projid..txt.,sep = ""),paste("B_X",metadata$Projid..txt.,sep = ""))
+all.dge = all.dge[,match(colnames(all.dge),rownames(design))]
+
+makeModels=function(){
+
+  Cogdx = model.matrix(~Cogdx,data = combinedMeta)
+  PathoAD = model.matrix(~PathoAD,data = combinedMeta)
+  Sex = model.matrix(~Sex,data = combinedMeta)
+  Age_death = model.matrix(~Age_death,data = combinedMeta)
+  RIN = model.matrix(~RIN,data = combinedMeta) 
+  PMI = model.matrix(~PMI,data = combinedMeta)
+  nanodrop = model.matrix(~nanodrop.ng.ul,data = combinedMeta)
+  site = model.matrix(~site,data = combinedMeta)
+
+  designlist = list(Cogdx=Cogdx,PathoAD=PathoAD,Sex=Sex,Age_death=Age_death,RIN=RIN,PMI=PMI,nanodrop=nanodrop,site=site)
+  return(designlist)
+}
+
+allModels=makeModels()
+chooseModel = selectModel(voom(all.dge),allModels,criterion = "bic")
+x = table(chooseModel$pref)
+chooseModel = selectModel(voom(all.dge),allModels,criterion = "aic")
+votes = rbind(x,table(chooseModel$pref))
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection for transcripts", cex.names = 0.7, las = 2)
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection for transcripts", cex.names = 0.7, las = 2,ylim = range(0,5000))
+```
+
+ANOVA of count data. For each transcript, the percentage of variation explained by each factor is calculated dividing the sum of squares by the total sum of squares. 
+```{r eval=FALSE,echo=FALSE}
+fracVar  = matrix(NA,nrow = nrow(all.dge),ncol=length(allModels)+1)
+all.cpm = cpm(all.dge,normalized.lib.sizes = TRUE,log = TRUE)
+for (i in 1:nrow(all.cpm)){
+  geneFit = lm(all.cpm[i,]~Cogdx+PathoAD+Sex+Age_death+RIN+PMI+nanodrop.ng.ul+site,data = combinedMeta)
+  x = summary(aov(geneFit))
+  fracVar[i,] = x[[1]]$`Sum Sq` / sum(x[[1]]$`Sum Sq`)
+}
+op = par(mar=c(7,4,4,2)+0.1)
+boxplot(fracVar,names=rownames(x[[1]]),las = 2)
+boxplot(fracVar,names=rownames(x[[1]]),las = 2,ylim = range(0,0.3),outline =FALSE)
+par(op)
+
+
+```
+
+
+
+
+DE for each group, and venn comparison
+```{r eval=FALSE,echo=FALSE}
+cutoff = 0.01
+design = model.matrix(~PathoAD+Cogdx+RIN+nanodrop.ng.ul+PMI+Age_death+Sex,data = metadata)
+#design = model.matrix(~PathoAD,data = metadata)
+rownames(design) = paste("X",metadata$Projid..txt.,sep = "")
+
+broadR.dge = broadR.dge[,match(rownames(design),colnames(broadR.dge))]
+broadR_palx50 = filterByFractionPresent(inDGE = broadR.dge,fraction = 0.8)
+data.voom = voom(broadR_palx50,design,plot=FALSE)
+fit = lmFit(data.voom,design)
+fit = eBayes(fit)
+#DEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(broadR_palx50),sort.by = "p")
+#broadSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+DEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(broadR_palx50),sort.by = "P")
+broadSig = rownames(DEgeneTable)[DEgeneTable$P.Value < cutoff]
+xStatus = as.numeric(rownames(fit) %in% broadSig)
+#plotMA(fit,coef = 2,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+
+
+tofix = which(colnames(mayoR.dge) == "X05689621")
+colnames(mayoR.dge)[tofix] = "X5689621"
+mayoR.dge = mayoR.dge[,match(rownames(design),colnames(mayoR.dge))]
+mayoR_palx50 = filterByFractionPresent(inDGE = mayoR.dge,fraction = 0.8)
+data.voom = voom(mayoR_palx50,design,plot=FALSE)
+fit = lmFit(data.voom,design)
+fit = eBayes(fit)
+#DEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(mayoR_palx50),sort.by = "p")
+#mayoSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+DEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(mayoR_palx50),sort.by = "P")
+mayoSig = rownames(DEgeneTable)[DEgeneTable$P.Value < cutoff]
+xStatus = as.numeric(rownames(fit) %in% mayoSig)
+#plotMA(fit,coef = 2,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+
+
+mssmR.dge = mssmR.dge[,match(rownames(design),colnames(mssmR.dge))]
+mssmR_palx50 = filterByFractionPresent(inDGE = mssmR.dge,fraction = 0.8)
+data.voom = voom(mssmR_palx50,design,plot=FALSE)
+fit = lmFit(data.voom,design)
+fit = eBayes(fit)
+#DEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(mssmR_palx50),sort.by = "p")
+#mssmSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
+DEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(mssmR_palx50),sort.by = "P")
+mssmSig = rownames(DEgeneTable)[DEgeneTable$P.Value < cutoff]
+xStatus = as.numeric(rownames(fit) %in% mssmSig)
+#plotMA(fit,coef = 2,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("black","green3"))
+
+venn(list(broad=broadSig,mayo=mayoSig,mssm=mssmSig))
+
+```
+
+
+DE for each group, considering only genes found in all groups
+```{r eval=FALSE,echo=FALSE}
+broad_palx_common = broadR_palx50[which(rownames(broadR_palx50) %in% mmb),]
+dim(broad_palx_common)
+data.voom = voom(broad_palx_common,design,plot=FALSE)
+fit = lmFit(data.voom,design)
+fit = eBayes(fit)
+broadDEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(broadR_palx50),sort.by = "P")
+broadSig = rownames(broadDEgeneTable)[broadDEgeneTable$P.Value < cutoff]
+
+
+mayo_palx_common = mayoR_palx50[which(rownames(mayoR_palx50) %in% mmb),]
+dim(mayo_palx_common)
+data.voom = voom(mayoR_palx50,design,plot=FALSE)
+fit = lmFit(data.voom,design)
+fit = eBayes(fit)
+mayoDEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(mayoR_palx50),sort.by = "P")
+mayoSig = rownames(mayoDEgeneTable)[mayoDEgeneTable$P.Value < cutoff]
+
+
+mssm_palx_common = mssmR_palx50[which(rownames(mssmR_palx50) %in% mmb),]
+dim(mssm_palx_common)
+data.voom = voom(mssmR_palx50,design,plot=FALSE)
+fit = lmFit(data.voom,design)
+fit = eBayes(fit)
+mssmDEgeneTable = topTable(fit,coef = "PathoAD1",number = nrow(mssmR_palx50),sort.by = "P")
+mssmSig = rownames(mssmDEgeneTable)[mssmDEgeneTable$P.Value < cutoff]
+
+venn(list(broad=broadSig,mayo=mayoSig,mssm=mssmSig))
+
+
+
+
+# Compare fold changes
+yFC = rownames(mayoDEgeneTable)[which(mayoDEgeneTable$logFC > 1.2)]
+bFC = rownames(broadDEgeneTable)[which(broadDEgeneTable$logFC > 1.2)]
+mFC = rownames(mssmDEgeneTable)[which(mssmDEgeneTable$logFC > 1.2)]
+
+
+# mayo-broad
+b_tmp = broadDEgeneTable$logFC[which(rownames(broadDEgeneTable) %in% yFC)]
+names(b_tmp) = rownames(broadDEgeneTable)[which(rownames(broadDEgeneTable) %in% yFC)]
+b_tmp = b_tmp[order(names(b_tmp))]
+
+y_tmp = mayoDEgeneTable$logFC[which(rownames(mayoDEgeneTable) %in% names(b_tmp))]
+names(y_tmp) = rownames(mayoDEgeneTable)[which(rownames(mayoDEgeneTable) %in% names(b_tmp))]
+y_tmp = y_tmp[order(names(y_tmp))]
+
+head(b_tmp)
+head(y_tmp)
+plot(y_tmp,b_tmp)
+abline(a = 0,b = 1,col = "green")
+cor.test(y_tmp,b_tmp)
+
+
+
+# broad-mayo
+y_tmp = mayoDEgeneTable$logFC[which(rownames(mayoDEgeneTable) %in% bFC)]
+names(y_tmp) = rownames(mayoDEgeneTable)[which(rownames(mayoDEgeneTable) %in% bFC)]
+y_tmp = y_tmp[order(names(y_tmp))]
+
+b_tmp = broadDEgeneTable$logFC[which(rownames(broadDEgeneTable) %in% names(y_tmp))]
+names(b_tmp) = rownames(broadDEgeneTable)[which(rownames(broadDEgeneTable) %in% names(y_tmp))]
+b_tmp = b_tmp[order(names(b_tmp))]
+
+head(y_tmp)
+head(b_tmp)
+plot(b_tmp,y_tmp)
+abline(a = 0,b = 1,col = "green")
+cor.test(b_tmp,y_tmp)
+
+
+
+
+# mayo-mssm
+m_tmp = mssmDEgeneTable$logFC[which(rownames(mssmDEgeneTable) %in% yFC)]
+names(m_tmp) = rownames(mssmDEgeneTable)[which(rownames(mssmDEgeneTable) %in% yFC)]
+m_tmp = m_tmp[order(names(m_tmp))]
+
+y_tmp = mayoDEgeneTable$logFC[which(rownames(mayoDEgeneTable) %in% names(m_tmp))]
+names(y_tmp) = rownames(mayoDEgeneTable)[which(rownames(mayoDEgeneTable) %in% names(m_tmp))]
+y_tmp = y_tmp[order(names(y_tmp))]
+
+head(m_tmp)
+head(y_tmp)
+plot(y_tmp,m_tmp)
+abline(a = 0,b = 1,col = "green")
+cor.test(y_tmp,m_tmp)
+
+
+
+# mssm-mayo
+y_tmp = mayoDEgeneTable$logFC[which(rownames(mayoDEgeneTable) %in% mFC)]
+names(y_tmp) = rownames(mayoDEgeneTable)[which(rownames(mayoDEgeneTable) %in% mFC)]
+y_tmp = y_tmp[order(names(y_tmp))]
+
+m_tmp = mssmDEgeneTable$logFC[which(rownames(mssmDEgeneTable) %in% names(y_tmp))]
+names(m_tmp) = rownames(mssmDEgeneTable)[which(rownames(mssmDEgeneTable) %in% names(y_tmp))]
+m_tmp = m_tmp[order(names(m_tmp))]
+
+head(y_tmp)
+head(m_tmp)
+plot(m_tmp,y_tmp)
+abline(a = 0,b = 1,col = "green")
+cor.test(m_tmp,y_tmp)
+
+
+
+# broad-mssm
+m_tmp = mssmDEgeneTable$logFC[which(rownames(mssmDEgeneTable) %in% bFC)]
+names(m_tmp) = rownames(mssmDEgeneTable)[which(rownames(mssmDEgeneTable) %in% bFC)]
+m_tmp = m_tmp[order(names(m_tmp))]
+
+b_tmp = broadDEgeneTable$logFC[which(rownames(broadDEgeneTable) %in% names(m_tmp))]
+names(b_tmp) = rownames(broadDEgeneTable)[which(rownames(broadDEgeneTable) %in% names(m_tmp))]
+b_tmp = b_tmp[order(names(b_tmp))]
+
+head(m_tmp)
+head(b_tmp)
+plot(b_tmp,m_tmp)
+abline(a = 0,b = 1,col = "green")
+cor.test(b_tmp,m_tmp)
+
+
+
+# mssm-broad
+b_tmp = broadDEgeneTable$logFC[which(rownames(broadDEgeneTable) %in% mFC)]
+names(b_tmp) = rownames(broadDEgeneTable)[which(rownames(broadDEgeneTable) %in% mFC)]
+b_tmp = b_tmp[order(names(b_tmp))]
+
+m_tmp = mssmDEgeneTable$logFC[which(rownames(mssmDEgeneTable) %in% names(b_tmp))]
+names(m_tmp) = rownames(mssmDEgeneTable)[which(rownames(mssmDEgeneTable) %in% names(b_tmp))]
+m_tmp = m_tmp[order(names(m_tmp))]
+
+head(b_tmp)
+head(m_tmp)
+plot(m_tmp,b_tmp)
+abline(a = 0,b = 1,col = "green")
+cor.test(m_tmp,b_tmp)
+
+
+library(ReactomePA)
+library("org.Hs.eg.db", lib.loc="/Library/Frameworks/R.framework/Versions/3.2/Resources/library")
+xx <- as.list(org.Hs.egENSEMBL2EG)
+unilist = xx[which(names(xx) %in% mmb)]
+universeEntrez = unique(unlist(unilist))
+
+sublist = xx[which(names(xx) %in% intersect(broadSig, intersect(mayoSig,mssmSig)))]
+DEentrez = unique(unlist(sublist))
+DE_path = enrichPathway(gene=DEentrez,universe = universeEntrez, readable=T)
+head(summary(DE_path))
+barplot(DE_path,showCategory = 25, main = "DE genes")
+enrichMap(DE_path,vertex.label.cex = 0.8)
+
+
+all2ormore = union(intersect(broadSig,mayoSig),union(intersect(broadSig,mssmSig),intersect(mssmSig,mayoSig)))
+sublist = xx[which(names(xx) %in% all2ormore)]
+DEentrez = unique(unlist(sublist))
+DE_path = enrichPathway(gene=DEentrez,universe = universeEntrez, readable=T)
+head(summary(DE_path))
+
+
+sublist = xx[which(names(xx) %in% broadSig)]
+DEentrez = unique(unlist(sublist))
+DE_path = enrichPathway(gene=DEentrez,universe = universeEntrez, readable=T)
+head(summary(DE_path))
+barplot(DE_path,showCategory = 25, main = "DE genes")
+enrichMap(DE_path,vertex.label.cex = 0.8)
+
+sublist = xx[which(names(xx) %in% mayoSig)]
+DEentrez = unique(unlist(sublist))
+DE_path = enrichPathway(gene=DEentrez,universe = universeEntrez, readable=T)
+head(summary(DE_path))
+barplot(DE_path,showCategory = 25, main = "DE genes")
+enrichMap(DE_path,vertex.label.cex = 0.8)
+
+sublist = xx[which(names(xx) %in% mssmSig)]
+DEentrez = unique(unlist(sublist))
+DE_path = enrichPathway(gene=DEentrez,universe = universeEntrez, readable=T)
+head(summary(DE_path))
+barplot(DE_path,showCategory = 25, main = "DE genes")
+enrichMap(DE_path,vertex.label.cex = 0.8)
+
+```

@@ -1,0 +1,144 @@
+---
+title: "swap_correlation_and_DE.Rmd"
+author: "Kristen Dang"
+date: "October 5, 2015"
+output: 
+  html_document: 
+    fig_height: 7
+---
+
+
+
+```{r}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(edgeR)
+library(gplots)
+library(RColorBrewer)
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+```
+
+# Get data
+```{r cache=TRUE}
+sourceRepoFile(sageCode, "NIA-AMP-AD/mayo_swap_preliminary.R")
+metadata$Diagnosis = as.factor(metadata$Diagnosis)
+metadata$Gender = as.factor(metadata$Gender)
+```
+
+
+# Correlation analysis of processed data:
+```{r}
+# Get common set of genes to use
+mssm_mayo = intersect(rownames(mssmCountsPalx),rownames(mayoCountsPalx))
+mssm_Common = mssmCountsPalx[which(rownames(mssmCountsPalx) %in% mssm_mayo),]
+mssm_Common = mssm_Common[order(rownames(mssm_Common)),]
+mayo_Common = mayoCountsPalx[which(rownames(mayoCountsPalx) %in% mssm_mayo),]
+mayo_Common = mayo_Common[order(rownames(mayo_Common)),]
+
+tail(rownames(mssm_Common))
+tail(rownames(mayo_Common))
+dim(mssm_Common)
+dim(mayo_Common)
+```
+
+How well do samples correlate to each other across sites? Plot distribution of per-sample correlations across sites. Compare to correlation within sites.
+
+1. Mayo-MSSM
+
+```{r}
+mssm_Common = mssm_Common[,match(colnames(mayo_Common),colnames(mssm_Common))]
+colnames(mssm_Common)
+colnames(mayo_Common)
+mm_Corr = cor(mssm_Common,mayo_Common,method = "spearman")
+heatmap.2(mm_Corr,trace="none",margins = c(7,7), main = "Mayo-MSSM")
+```
+
+# All together now
+```{r}
+plot(density(mm_Corr), ylim = range(0,45), main = "Mayo-MSSM")
+lines(density(diag((mm_Corr))),lty = 2)
+legend("topright",legend = c("all", "self"),lty = c(1,2))
+
+
+removeSelf=function(inSelf){
+  selfMatches = diag(inSelf)
+  temp = cbind(diag(x=selfMatches),matrix(0,nrow=9,ncol = 0))
+  return(inSelf - temp)
+}
+boxplot(as.vector(removeSelf(mm_Corr)), diag(mm_Corr), varwidth = TRUE,ylim = range(0.75,1), col = c("goldenrod1","goldenrod1"),names = c("non-self","self"))
+```
+
+PCA, sample clustering, etc.
+```{r}
+mssm_temp.dge = mssmPalx.dge[which(rownames(mssmPalx.dge) %in% mssm_mayo),]
+mssm_temp.dge = mssm_temp.dge[order(rownames(mssm_temp.dge)),]
+colnames(mssm_temp.dge) = paste("M",colnames(mssm_temp.dge),sep = "_")
+mssm_temp.dge = mssm_temp.dge[,order(colnames(mssm_temp.dge))]
+mayo_temp.dge = mayoPalx.dge[which(rownames(mayoPalx.dge) %in% mssm_mayo),]
+mayo_temp.dge = mayo_temp.dge[order(rownames(mayo_temp.dge)),]
+colnames(mayo_temp.dge) = paste("Y",colnames(mayo_temp.dge),sep = "_")
+mayo_temp.dge = mayo_temp.dge[,order(colnames(mayo_temp.dge))]
+all.dge = DGEList(counts = cbind(getCounts(mssm_temp.dge),getCounts(mayo_temp.dge)))
+
+fm.pca = FM_PCA(in.data = cpm(all.dge,normalized.lib.sizes=TRUE,log=TRUE),plot = TRUE)
+
+Dx = rep(as.numeric(metadata$Diagnosis[match(substr(colnames(mssm_temp.dge),start = 4,stop = 15),metadata$ID)]),2)
+DxColors = c("slateblue1","sandybrown", "yellowgreen", "purple")
+SampColors = rep(brewer.pal(n=9,name="Paired"),2)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8)
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,col.ind = DxColors[Dx])
+legend("bottomright",legend = levels(metadata$Diagnosis),pch = 16, col = DxColors )
+
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = DxColors[Dx])
+legend("topleft",legend = levels(metadata$Diagnosis),pch = 16, col = DxColors )
+
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(2,3),col.ind = SampColors)
+
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = DxColors[Dx])
+legend("topleft",legend = levels(metadata$Diagnosis),pch = 16, col = DxColors )
+
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(3,4),col.ind = SampColors)
+
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = DxColors[Dx])
+legend("topleft",legend = levels(metadata$Diagnosis),pch = 16, col = DxColors )
+
+plot.PCA(fm.pca,choix = "ind",new.plot = TRUE,label="all",cex=0.8,axes = c(4,5),col.ind = SampColors)
+
+```
+
+
+Model selection comparing a series of non-nested, 1-factor models. 
+```{r eval=FALSE}
+combinedMeta = rbind(metadata,metadata)
+combinedMeta$site = c(rep("MSSM",9),rep("Mayo",9))
+combinedMeta$Cogdx = as.factor(combinedMeta$Cogdx)
+combinedMeta$PathoAD = as.factor(combinedMeta$PathoAD)
+combinedMeta$Sex = as.factor(combinedMeta$Sex)
+combinedMeta$site = as.factor(combinedMeta$site)
+design = model.matrix(~Cogdx+PathoAD+Sex+Age_death+RIN+PMI+nanodrop.ng.ul+site,data = combinedMeta)
+rownames(design) = c(paste("M_X",metadata$Projid..txt.,sep = ""),paste("Y_X",metadata$Projid..txt.,sep = ""),paste("B_X",metadata$Projid..txt.,sep = ""))
+all.dge = all.dge[,match(colnames(all.dge),rownames(design))]
+
+makeModels=function(){
+
+  Cogdx = model.matrix(~Cogdx,data = combinedMeta)
+  PathoAD = model.matrix(~PathoAD,data = combinedMeta)
+  Sex = model.matrix(~Sex,data = combinedMeta)
+  Age_death = model.matrix(~Age_death,data = combinedMeta)
+  RIN = model.matrix(~RIN,data = combinedMeta) 
+  PMI = model.matrix(~PMI,data = combinedMeta)
+  nanodrop = model.matrix(~nanodrop.ng.ul,data = combinedMeta)
+  site = model.matrix(~site,data = combinedMeta)
+
+  designlist = list(Cogdx=Cogdx,PathoAD=PathoAD,Sex=Sex,Age_death=Age_death,RIN=RIN,PMI=PMI,nanodrop=nanodrop,site=site)
+  return(designlist)
+}
+
+allModels=makeModels()
+chooseModel = selectModel(voom(all.dge),allModels,criterion = "bic")
+x = table(chooseModel$pref)
+chooseModel = selectModel(voom(all.dge),allModels,criterion = "aic")
+votes = rbind(x,table(chooseModel$pref))
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection for transcripts", cex.names = 0.7, las = 2)
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection for transcripts", cex.names = 0.7, las = 2,ylim = range(0,5000))
+```

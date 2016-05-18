@@ -1,0 +1,91 @@
+---
+title: "swap_outliers_and_variance.Rmd"
+author: "Kristen Dang"
+date: "October 5, 2015"
+output: 
+  html_document: 
+    fig_width: 5
+---
+```{r}
+library('rGithubClient')
+source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(edgeR)
+library(gplots)
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+```
+
+# Get data
+```{r cache=TRUE}
+sourceRepoFile(sageCode, "NIA-AMP-AD/mayo_swap_preliminary.R")
+```
+
+# Correlation heatmaps
+```{r fig.height=7,fig.width=7}
+op = par(mar = c(12,4,4,8))
+mayoR.dend = heatmap.2(cor(mayoR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "Mayo",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
+mssmR.dend = heatmap.2(cor(mssmR_counts,method = "spearman"),dendrogram = "col",scale = "none",main = "MSSM",trace = "none",breaks = seq(0.85,1,0.001), margins = c(7,7))
+par(op)
+```
+
+
+PCA plots
+```{r}
+countsData = list(Mayo=mayoR.dge, MSSM=mssmR.dge)
+
+for (i in 1:2){
+  data.dge = countsData[[i]]
+  DxStatus = metadata$Diagnosis[match(colnames(data.dge),paste("X",metadata$ID,sep = ""))]
+
+  
+#  fm.pca = FM_PCA(in.voom = voom_on_mean(data.dge,plot = FALSE),plot = TRUE)
+  fm.pca = FM_PCA(in.data = cpm(x = data.dge,normalized.lib.sizes = TRUE,log = TRUE),plot = TRUE)
+  plotcols = c("orangered", "royalblue", "greenyellow", "purple")
+  plot.PCA(fm.pca, choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(DxStatus))],label = "all",cex=0.8)
+  
+  plot.PCA(fm.pca, axes = c(2,3),choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(DxStatus))],label = "all",cex=0.8)
+  
+  plot.PCA(fm.pca, axes = c(3,4),choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(DxStatus))],label = "all",cex=0.8)
+  
+#  plot.PCA(fm.pca, axes = c(4,5),choix = "ind", new.plot = TRUE,col.ind = plotcols[as.numeric(as.factor(DxStatus))],label = "all",cex=0.8)
+}
+
+```
+
+
+Density plots
+```{r}
+for (i in 1:2){
+  densityPlot(countsData[[i]], mainLabel="all genes, palx5",ub=0.35)
+}
+plot(1)
+```
+
+
+Median - IQR
+```{r}
+for (i in 1:2){
+  l_counts = cpm(countsData[[i]],normalized.lib.sizes = TRUE,log = TRUE)
+  meds = apply(l_counts,MARGIN = 2,FUN = median,na.rm = TRUE)
+  iqrs = apply(l_counts,MARGIN = 2,FUN = IQR, na.rm = TRUE)
+  plot(meds,iqrs, xlab = "medians", ylab = "interquartile ranges", main = "log2(CPM) protein-coding genes")
+}
+par(op)
+```
+
+Sex-specific expression
+```{r}
+Ygenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="Y", mart=Hs)
+malesIDs = metadata$ID[which(metadata$Gender == "M")]
+
+
+for (i in 1:2){
+  l_counts = cpm(countsData[[i]],normalized.lib.sizes = TRUE,log = TRUE)
+  y_exprs = colMeans(l_counts[which(rownames(l_counts) %in% Ygenes[,1]),])
+  males = which(colnames(l_counts) %in% paste("X",malesIDs,sep = ""))
+  plotSymb = rep(16,10)
+  plotSymb[males] = 17
+  dotchart(y_exprs, main = paste(names(countsData[i]), "expr of Y chromosome genes", sep = " "),xlab = "mean log2(cpm)",pch = plotSymb)
+}
+
+
+```
