@@ -14,7 +14,7 @@ library(edgeR)
 library(gplots)
 library(RColorBrewer)
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
-sourceRepoFile(sageCode, "NIA-AMP-AD/sample_swap_preliminary.R")
+sourceRepoFile(sageCode, "NIA-AMP-AD/swap_analysis/sample_swap_preliminary.R")
 ```
 
 
@@ -56,12 +56,22 @@ legend("topright",legend = c("Mayo","Broad","MSSM"),col = c("goldenrod","red","b
 ```{r}
 picardGeneMetrics = synTableQuery("SELECT * FROM syn4597336")
 colnames(picardGeneMetrics@values)
-plot(picardGeneMetrics@values$PCT_INTERGENIC_BASES,col = "plum4",pch = 16,type = "o",ylab = "fraction reads", ylim = range(0,1))
-lines(picardGeneMetrics@values$PCT_INTRONIC_BASES,col = "slateblue",pch = 16,type = "o")
-lines(picardGeneMetrics@values$PCT_UTR_BASES,col = "seagreen3",pch = 16,type = "o")
-lines(picardGeneMetrics@values$PCT_CODING_BASES,col = "darkgoldenrod2",pch = 16,type = "o")
-lines(picardGeneMetrics@values$PCT_RIBOSOMAL_BASES,col = "orangered",pch = 16,type = "o")
+picardGeneMetrics@values$Sample
+plotdata = picardGeneMetrics@values[1:30,]
+
+
+mayoAveResults = colMeans(plotdata[1:10,3:24])
+mssmAveResults = colMeans(plotdata[21:30,3:24])
+broadAveResults = colMeans(plotdata[11:20,3:24])
+
+plot(plotdata$PCT_INTERGENIC_BASES,col = "plum4",pch = 16, xlab = "samples",type = "o",ylab = "fraction reads", ylim = range(0,1))
+lines(plotdata$PCT_INTRONIC_BASES,col = "slateblue",pch = 16, xlab = "samples",type = "o")
+lines(plotdata$PCT_UTR_BASES,col = "seagreen3",pch = 16, xlab = "samples",type = "o")
+lines(plotdata$PCT_CODING_BASES,col = "darkgoldenrod2",pch = 16, xlab = "samples",type = "o")
+lines(plotdata$PCT_RIBOSOMAL_BASES,col = "orangered",pch = 16, xlab = "samples",type = "o")
 legend("topright",legend = c("intergenic","intronic","UTR","coding","ribosomal"),col = c("plum4","slateblue","seagreen3","darkgoldenrod2","orangered"),pch=16)
+
+barplot(t(rbind(mayoAveResults[3:7]/mayoAveResults[2], broadAveResults[3:7]/broadAveResults[2], mssmAveResults[3:7]/mssmAveResults[2])),beside = FALSE,names.arg = c("siteA", "siteB", "siteC"),legend.text = c("ribosomal", "coding", "UTR", "intronic", "intergenic"), col = rainbow(5), ylab = "fraction of aligned reads")
 ```
 
 # featurecounts assignment metrics
