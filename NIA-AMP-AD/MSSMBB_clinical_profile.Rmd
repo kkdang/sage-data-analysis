@@ -30,7 +30,7 @@ plotExploreData=function(inData,plotTitle){
 
 
 Plot the data
-```{r}
+```{r fig.width=14, fig.height=14}
 MSSMBB_entity = synGet("syn2706447")
 MSSMBB_clinical = read.delim(getFileLocation(MSSMBB_entity), row.names = 1)
 MSSMBB_clinical$Sex = as.character(MSSMBB_clinical$Sex)
@@ -38,10 +38,9 @@ MSSMBB_clinical$PLQ_Gr = as.character(MSSMBB_clinical$PLQ_Gr)
 MSSMBB_clinical$CDR = as.character(MSSMBB_clinical$CDR)
 MSSMBB_clinical$Braak = as.character(MSSMBB_clinical$Braak)
 
-par(mfrow = c(3,3)) 
+par(mfrow = c(3,3), cex=1.3) 
 for(i in 1:ncol(MSSMBB_clinical)){
   plotExploreData(inData=MSSMBB_clinical[,i],plotTitle=colnames(MSSMBB_clinical)[i])
 }
-#boxplot(t(MSSMBB_clinical[2:26,]), las = 2, boxwex = 0.8)
 
 ```
