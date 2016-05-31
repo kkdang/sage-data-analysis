@@ -21,6 +21,7 @@ for (i in 1:nrow(bamlist)){
 }
 
 
+
 ##### Mayo data ######## Cerebellum #
 datasetAnnotations = list(study="MayoRNAseq",center="UFL-Mayo-ISB",modelSystem=FALSE,tissueTypeAbrv="CBE",tissueType="cerebellum",organism="HomoSapiens")
 
@@ -186,3 +187,63 @@ for (i in 1:nrow(onlyFq)){
   temp = synStore(temp,forceVersion = FALSE)
 }
 
+##### MSSM iPSC data ######## 
+commonAnnotations = list(consortium="AMP-AD", dataType="mRNA", assay="RNAseq", dataSubType="geneExp", fileType="bam")
+
+datasetAnnotations = list(study="MSSMiPSC",center="MSSM",modelSystem=TRUE,organism="HomoSapiens")
+
+bamlist = synQuery("select id, name from file where parentId=='syn5986894'")
+onlyBam = bamlist[grep(pattern = "bam",bamlist$file.name),]
+onlyFq = bamlist[grep(pattern = "unmapped",bamlist$file.name),]
+for (i in 1:nrow(onlyBam)){
+  temp = synGet(onlyBam$file.id[i],downloadFile = FALSE)
+  synSetAnnotations(temp) = c(commonAnnotations, datasetAnnotations)
+  temp = synStore(temp,forceVersion = FALSE)
+}
+commonAnnotations = list(consortium="AMP-AD", dataType="mRNA", assay="RNAseq", dataSubType="geneExp", fileType="fastq")
+for (i in 1:nrow(onlyFq)){
+  temp = synGet(onlyFq$file.id[i],downloadFile = FALSE)
+  synSetAnnotations(temp) = c(commonAnnotations, datasetAnnotations)
+  temp = synStore(temp,forceVersion = FALSE)
+}
+
+mssmipsc = read.csv(getFileLocation(synGet("syn6040297")))
+head(mssmipsc)
+head(bamlist)
+table(mssmipsc$Celltype)
+n = which(mssmipsc$Celltype == "Neurons")
+npsc = which(mssmipsc$Celltype == "NPCs")
+
+sampleIds = sapply(as.list(bamlist$file.name), function(x) { unlist(strsplit(x, split = "[.]"))[1] })
+bamsToEdit = which(sampleIds %in% mssmipsc$Library[n])
+for (i in 1:length(bamsToEdit)){
+  tempEnt = synGet(bamlist$file.id[bamsToEdit[i]], downloadFile = FALSE)
+  synSetAnnotation(tempEnt, "celltype") = "iPSCderivedMatureNeuron"
+  synStore(tempEnt, forceVersion = FALSE)
+}
+
+bamsToEdit = which(sampleIds %in% mssmipsc$Library[npsc])
+for (i in 1:length(bamsToEdit)){
+  tempEnt = synGet(bamlist$file.id[bamsToEdit[i]], downloadFile = FALSE)
+  synSetAnnotation(tempEnt, "celltype") = "iPSCderivedNeuralProgenitorCell"
+  synStore(tempEnt, forceVersion = FALSE)
+}
+
+##### Mayo data ######## TCX #
+commonAnnotations = list(consortium="AMP-AD", dataType="mRNA", assay="RNAseq", dataSubType="differentialExpression", fileType="tsv")
+
+datasetAnnotations = list(study="MayoRNAseq",center="UFL-Mayo-ISB",modelSystem=FALSE,tissueTypeAbrv="TCX",tissueType="temporalCortex",organism="HomoSapiens")
+
+
+entityList = synQuery("select id, name from file where parentId=='syn6090803'")
+for (i in 1:nrow(entityList)){
+  temp = synGet(entityList$file.id[i],downloadFile = FALSE)
+  synSetAnnotations(temp) = c(commonAnnotations, datasetAnnotations)
+  temp = synStore(temp,forceVersion = FALSE)
+}
+entityList = synQuery("select id, name from file where parentId=='syn6090804'")
+for (i in 1:nrow(entityList)){
+  temp = synGet(entityList$file.id[i],downloadFile = FALSE)
+  synSetAnnotations(temp) = c(commonAnnotations, datasetAnnotations)
+  temp = synStore(temp,forceVersion = FALSE)
+}
