@@ -5,11 +5,40 @@ date: "March 4, 2015"
 output: html_document
 ---
 
-```{r message=FALSE,warning=FALSE,fig.height=9,fig.width=9}
+```{r message=FALSE,warning=FALSE,echo=FALSE}
 library(synapseClient)
 synapseLogin()
 library('rGithubClient')
+token = read.delim('~/Movies/rGHclient_token.txt',header = FALSE)
+setGithubToken(as.character(token[1,1]))
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
-tmp = processMetadata(ver = 3,plot = TRUE)
+```
+
+## Profile metadata
+```{r fig.height=9,fig.width=9}
+metadataFiltered = processMetadata(ver = 5,plot = TRUE)
+```
+
+## Compare "Initial growth duration days" to the date the cells were frozen
+```{r fig.width=9}
+# Using years
+summary(lm(metadataFiltered$Initial_growth_duration_days~metadataFiltered$Initial_date_freeze))
+plot(metadataFiltered$Initial_growth_duration_days~metadataFiltered$Initial_date_freeze, las = 2,varwidth = TRUE, main = "Initial growth duration vs date frozen")
+
+# Using months
+metadataEnt = synGet('syn3241418',version = 5)
+metadata = read.delim(getFileLocation(metadataEnt),header = TRUE)
+  
+data = as.matrix(table(substr(metadata$Initial_date_set_up,start = 1,7)))
+x = as.factor(substr(metadata$Initial_date_set_up,start = 1,7))
+metadataFiltered$Initial_date_set_up = x
+  
+data = as.matrix(table(substr(metadata$Initial_date_freeze,start = 1,7)))
+x = as.factor(substr(metadata$Initial_date_freeze,start = 1,7))
+metadataFiltered$Initial_date_freeze = x
+ 
+summary(lm(metadataFiltered$Initial_growth_duration_days~metadataFiltered$Initial_date_freeze))
+plot(metadataFiltered$Initial_growth_duration_days~metadataFiltered$Initial_date_freeze, las = 2,varwidth = TRUE, xlab = "", main = "Initial growth duration vs date frozen")
+
 ```
