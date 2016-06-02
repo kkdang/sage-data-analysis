@@ -6,9 +6,8 @@
 # ---
 
 library('rGithubClient')
-library(ConsensusClusterPlus)
 source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
-sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 setwd('~/Computing/cranio/')
 
 cutoff = 0.05
@@ -23,7 +22,11 @@ metadataFiltered$Sample_Type[grep("Sagittal",metadataFiltered$Sample_Type)] = "S
 metadataFiltered$Sample_Type = as.factor(metadataFiltered$Sample_Type)
 
 ## Get counts data.
-data.dge = generateDataObj('syn2820309')
+dataEnt = synGet('syn2820309')
+estReads = read.csv(getFileLocation(dataEnt), row.names = 1)
+colnames(estReads) = metadataFiltered$Px_Code[match(colnames(estReads), paste("X", metadataFiltered$SAMPLE,sep = ""))]
+data.dge = DGEList(counts=estReads,remove.zeros=TRUE)
+rm(estReads)
 
 # Remove outliers and samples that don't have seq data.
 outlierTable = synTableQuery('SELECT * FROM syn3354503')
