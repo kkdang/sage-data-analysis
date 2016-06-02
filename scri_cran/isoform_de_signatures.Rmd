@@ -1,0 +1,63 @@
+---
+title: "sailfish_data_exploration.Rmd"
+author: "Kristen Dang"
+date: "12/18/2014"
+output: html_document
+---
+
+```{r}
+
+library('synapseClient')
+synapseLogin()
+library('edgeR')
+library('rGithubClient')
+sageCode = getRepo(repository="kkdang/sage-data-analysis")
+sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
+library('EBSeq')
+
+```
+
+
+Fix the sample names of the estimated read count data
+```{r}
+dataEntity = synGet('syn2961661',version = 2)
+library('R.utils')
+gunzip(getFileLocation(dataEntity),overwrite=TRUE)
+x = unlist(strsplit(getFileLocation(dataEntity), split = '.gz'))
+detach("package:R.utils", unload=TRUE)
+estReads = read.csv(x, row.names = 1)
+
+casesEntity = synGet('syn2776535')
+cases = read.delim(getFileLocation(casesEntity), head = FALSE)[,1]
+controlsEntity = synGet('syn2776533')
+controls = read.delim(getFileLocation(controlsEntity), head = FALSE)[,1]
+
+casesStatus = rep("case", ncol(estReads))
+casesStatus[which(colnames(estReads) %in% paste("X", controls, sep=""))] = "control"
+```
+
+
+
+```{r}
+data.dge = DGEList(counts=estReads,remove.zeros=TRUE)
+data_palx.dge = filterByFractionPresent(data.dge,fraction=0.05)
+
+
+# Library sizes
+hist(data_palx.dge$samples$lib.size)
+
+## kernel density plots
+densityPlot(data_palx.dge, mainLabel="all samples, PALX",ub=0.4)
+
+## Boxplots
+boxplot(cpm(data_palx.dge,normalized.lib.sizes=FALSE,log=TRUE),outline=FALSE, las = 2, main = "distribution of expression values", xlab = "sample", ylab = "log2(counts per million)",names=NA)
+
+```
+
+
+```{r}
+deIsoforms=function(){
+  IsoSizes=MedianNorm(IsoMat)
+}
+
+```
