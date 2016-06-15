@@ -110,13 +110,13 @@ regressDetectionOnMetadata=function(inDetectCounts, inMetaData){
 countDetected=function(x, filter=2){ sum(x > filter) }
 
 filterByFractionPresent=function(inCounts,fraction=0.1,minCount=2){
-  if (typeof(inCounts) == DGEList){
+  if (typeof(inCounts) == "DGEList"){
     retain = apply(getCounts(inDGE),MARGIN=1,FUN=palx, x=fraction, filter=minCount)
     filtered = DGEList(getCounts(inDGE[which(retain),]), group = inDGE$samples$group)
   }
   else {
     retain = apply(inCounts,MARGIN=1,FUN=palx, x=fraction, filter=minCount)
-    filtered = inCounts[which(retain),])
+    filtered = inCounts[which(retain),]
   }
   return(filtered)
 }
