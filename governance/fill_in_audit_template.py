@@ -36,7 +36,8 @@ for result in results:
 
 
 # Read math in, calculate and put in dictionary
-with open('/Users/kristen/Computing/Audit/audit_formulas.txt', 'r') as formulas_file:
+formulasEntity = syn.get('syn3383094')
+with open(formulasEntity.path, 'r') as formulas_file:
 	for line in formulas_file:
 		(valName,formula) = line.split('\t')
 		compFormula = pr.expr(formula).compile()
