@@ -9,7 +9,7 @@ library(scales)
 library(lubridate)
 library(edgeR)
 library(RColorBrewer)
-library('rGithubClient')
+library(githubr)
 sageCode = getRepo(repository="kkdang/sage-data-analysis")
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 
