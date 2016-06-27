@@ -5,8 +5,8 @@
 # output: html_document
 # ---
 
-library('rGithubClient')
-source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library(githubr)
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 setwd('~/Computing/cranio/')
 
