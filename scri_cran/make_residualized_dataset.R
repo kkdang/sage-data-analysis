@@ -44,6 +44,7 @@ dim(noOutliers.dge)
 ## Make PALX20 dataset 
 palx20.dge = filterByFractionPresent(noOutliers.dge,fraction=0.1,minCount=2)
 dim(palx20.dge)
+palx20.dge = calcNormFactors(palx20.dge)
 
 
 ## Run model and get residuals
