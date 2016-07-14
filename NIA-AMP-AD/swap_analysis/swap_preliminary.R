@@ -35,8 +35,10 @@ sourceRepoFile(sageCode, "NIA-AMP-AD/swap_analysis/mayo_swap_preliminary.R")
 YmayoCountsPalx = mayoCountsPalx
 YmssmCountsPalx = mssmCountsPalx
 Ysamples = c(colnames(YmssmCountsPalx), colnames(YmayoCountsPalx))
+YmssmPalx.dge = mssmPalx.dge
+YmayoPalx.dge = mayoPalx.dge
 
-rm(mayoData, mayo, mayoCountsPalx, mayoPalx.dge, mayoR_counts, mayoR.dge)
-rm(mssmData, mssm, mssmCountsPalx, mssmPalx.dge, mssmR_counts, mssmR.dge)
+rm(mayoData, mayo, mayoCountsPalx, mayoR_counts, mayoR.dge)
+rm(mssmData, mssm, mssmCountsPalx, mssmR_counts, mssmR.dge)
 
 
