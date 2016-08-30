@@ -46,7 +46,7 @@ minimalSetPlusSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES"
 tempModel = model.matrix(as.formula(paste("~",paste(minimalSetPlusSex,collapse = "+"),sep = "")), data = metadataMatching)
 data.voom = voom(palx20.dge,tempModel,plot=FALSE) 
 fit = lmFit(data.voom,tempModel)
-residSex = residuals(fit,y = data.voom)
+resid = residuals(fit,y = data.voom)
 
 ```
 
@@ -68,10 +68,9 @@ phenoEnrich=function(queryGeneSet,universeGeneSet,queryAgainstGeneSet){
 
 ### IGF1 & Thyroid
 ```{r}
-# Gene genes significantly correlated with IGF1 in cases
+# Gene genes significantly correlated with IGF1
 IGF1ensg = as.character(CunninghamGL$V6[which(CunninghamGL$gene == "IGF1")])
 IGF1resid = resid[which(rownames(resid) == IGF1ensg),]
-
 
 # What are the correlation estimates
 IGF1cor = apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1resid)$estimate})
@@ -89,43 +88,162 @@ length(topHits)
 # Enrichment in Thyroid pathway?
 thyFisher = phenoEnrich(queryGeneSet =  rownames(resid)[topHits],universeGeneSet = rownames(resid),queryAgainstGeneSet = unique(na.omit(CunninghamGL$V6[which(CunninghamGL$Thyroid == "YES")])))
 
-
-# Other enrichment?
-# library(ReactomePA)
-# pathEnrich = enrichPathway(gene=HCentrez,universe = universeEntrez, readable=T)
-# head(summary(HC_path))
-# barplot(HC_path,showCategory = 25, main = "HC genes")
-# enrichMap(HC_path)
-
 ```
 
 
 Heatmaps 
 ```{r}
+plotCols = c("yellowgreen","gray85")
 ### clustered -- all top hits
-heatmap.2(resid[topHits,],labRow="",trace='n',col=bluered,scale='r',dendrogram = "column")
+heatmap.2(resid[topHits,],labRow="",trace='n',col=bluered,scale='r',dendrogram = "column", main="top genes correlated with IGF1\nall samples")
 
 ### clustered -- thyroid top hits
-plotCols = c("yellowgreen","gray85")
-topThy = intersect(na.omit(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]),rownames(resid)[topHits])
-topThyHGNC = geneNames$HGNC.symbol[match(topThy, geneNames$Ensembl.Gene.ID)]
-heatmap.2(resid[which(rownames(resid) %in% topThy),],labRow="",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus)],dendrogram = "column")
-
-
+# topThy = intersect(na.omit(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]),rownames(resid)[topHits]) #  label ordering is incorrect and needs to be fixed
+# topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThy, geneNames$Ensembl.Gene.ID)])
+# heatmap.2(resid[which(rownames(resid) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus)],dendrogram = "column", main = "top Thyroid genes correlated with IGF1\nall samples")
 
 
 ### ordered by IGF1
 IGF1residOrdered = IGF1resid[order(IGF1resid)]
-residOrdered = resid[,match(names(IGF1residOrdered),colnames(resid))]
+topThy = intersect(na.omit(c(as.character(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]),IGF1ensg)),rownames(resid)[topHits])
+topThy = topThy[order(topThy)]
+residOrdered = resid[which(rownames(resid) %in% topThy),match(names(IGF1residOrdered),colnames(resid))]
+residOrdered = residOrdered[order(rownames(residOrdered)),]
+head(residOrdered)
+topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThy, geneNames$Ensembl.Gene.ID)])
 
-heatmap.2(resid[which(rownames(resid) %in% topThy),],labRow="",trace='n',col=bluered,scale='r',dendrogram = "none",Colv=NULL,key = FALSE)
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "top Thyroid genes correlated with IGF1\nall samples", xlab = "ordered by IGF1 expression")
+
+topThyCC = topThy
+
+# all Thyroid genes, regardless of significance of correlation
+### ordered by IGF1
+topThy = na.omit(c(as.character(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]),IGF1ensg))
+topThy = topThy[order(topThy)]
+residOrdered = resid[which(rownames(resid) %in% topThy),match(names(IGF1residOrdered),colnames(resid))]
+residOrdered = residOrdered[order(rownames(residOrdered)),]
+head(residOrdered)
+dim(residOrdered)
+topThyShort = topThy[which(topThy %in% rownames(residOrdered))]
+length(topThyShort)
+topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThyShort, geneNames$Ensembl.Gene.ID)])
+
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "all Thyroid genes correlated with IGF1\nall samples", xlab = "ordered by IGF1 expression")
+
 
 
 ```
 
-To do:
-1. Review the IGF1-ordered plot again.
-2. Add HGNC symbols to small heatmap of thyroid-top hits.
-3. Expand tophits and plot again.
-4. Plot heatmap of all Thyroid genes, ordered by IGF1 expression
-5. Other pathway enrich?
+
+
+
+Looking separately at cases
+```{r}
+hist(IGF1resid, col = "aliceblue")
+dotchart((IGF1resid[order(IGF1resid)]),cex = 0.9,groups = metadataMatching$caseStatus[order(IGF1resid)],labels = "",main = "IGF1 normalized expression", xlab = "residual expression")
+
+
+# Gene genes significantly correlated with IGF1 in cases
+cases = as.character(metadataMatching$Px_Code[metadataMatching$caseStatus == "case"])
+IGF1residCases = IGF1resid[which(names(IGF1resid) %in% cases)]
+residCases = resid[,which(colnames(resid) %in% cases)]
+dim(residCases)
+IGF1corCases = apply(residCases,MARGIN = 1,function(z){cor.test(z,IGF1residCases)$estimate})
+hist(IGF1corCases)
+#x = apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1resid)$p.value})
+IGF1sigCases = p.adjust(apply(residCases,MARGIN = 1,function(z){cor.test(z,IGF1residCases)$p.value}),method = "fdr")
+hist(IGF1sigCases)
+
+
+# How many are significant?
+length(which(IGF1sigCases < 0.01))
+topHits = intersect(which(IGF1sigCases < 0.01), which(abs(IGF1corCases) > 0.5))
+length(topHits)
+
+# Enrichment in Thyroid pathway?
+thyFisher = phenoEnrich(queryGeneSet =  rownames(residCases)[topHits],universeGeneSet = rownames(residCases),queryAgainstGeneSet = unique(na.omit(CunninghamGL$V6[which(CunninghamGL$Thyroid == "YES")])))
+
+
+#Heatmaps 
+
+### ordered by IGF1
+IGF1residOrderedCases = IGF1residCases[order(IGF1residCases)]
+topThy = intersect(na.omit(c(as.character(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]),IGF1ensg)),rownames(residCases)[topHits])
+topThy = topThy[order(topThy)]
+residOrdered = residCases[which(rownames(residCases) %in% topThy),match(names(IGF1residOrderedCases),colnames(residCases))]
+residOrdered = residOrdered[order(rownames(residOrdered)),]
+head(residOrdered)
+topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThy, geneNames$Ensembl.Gene.ID)])
+length(topThyHGNC)
+dim(residOrdered)
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "top Thyroid genes correlated with IGF1\ncase samples", xlab = "ordered by IGF1 expression")
+
+# Compare genes found using controls or not
+topThyCases = topThy
+intersect(topThyCases,topThyCC)
+setdiff(topThyCases,topThyCC)
+setdiff(topThyCC,topThyCases)
+```
+
+
+Look at transcript level data
+```{r}
+transcriptNames = read.delim("~/Downloads/ENSGv87_geneHGNC_transcripts.txt", header = TRUE)
+
+# Get all IGF1 transcripts, see if one is dominantly expressed in this dataset
+IGF1trans = as.character(transcriptNames$Ensembl.Transcript.ID[transcriptNames$Ensembl.Gene.ID == IGF1ensg])
+
+
+# Get transcript data and model
+#sourceRepoFile(sageCode, 'scri_cran/make_residualized_case_dataset_transcripts.R')
+# or source local file
+head(resid)
+dim(resid)
+IGF1transDom = intersect(rownames(resid), IGF1trans)
+IGF1transResid = resid[which(rownames(resid) %in% IGF1trans),]
+dotchart((IGF1transResid[order(IGF1transResid)]),cex = 0.9,groups = metadataMatching$caseStatus[order(IGF1transResid)],labels = "",main = "IGF1 transcript expression\nall samples", xlab = "residual expression")
+
+
+# Get all Thyroid transcripts
+thyroidGenes = as.character(na.omit(CunninghamGL$V6[which(CunninghamGL$Thyroid == "YES")]))
+thyroidTrans = as.character(transcriptNames$Ensembl.Transcript.ID[which(transcriptNames$Ensembl.Gene.ID %in% thyroidGenes)])
+
+
+# What are the correlation estimates
+IGF1transCor = apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1transResid)$estimate})
+hist(IGF1transCor)
+#x = apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1resid)$p.value})
+IGF1transSig = p.adjust(apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1transResid)$p.value}),method = "fdr")
+hist(IGF1transSig)
+
+
+# How many are significant?
+length(which(IGF1transSig < 0.01))
+topHits = intersect(which(IGF1transSig < 0.01), which(abs(IGF1transCor) > 0.5))
+length(topHits)
+
+# Enrichment in Thyroid pathway?
+thyTransFisher = phenoEnrich(queryGeneSet =  rownames(resid)[topHits],universeGeneSet = rownames(resid),queryAgainstGeneSet = rownames(resid)[which(rownames(resid) %in% thyroidTrans)])
+thyTransFisher = phenoEnrich(queryGeneSet =  rownames(resid)[topHits],universeGeneSet = rownames(resid),queryAgainstGeneSet = thyroidTrans)
+
+
+#Heatmaps 
+### clustered -- all top hits
+heatmap.2(resid[topHits,],labRow="",trace='n',col=bluered,scale='r',dendrogram = "column", main="top transcripts corr with IGF1\nall samples")
+
+### ordered by IGF1
+IGF1transResidOrdered = IGF1transResid[order(IGF1transResid)]
+topThy = intersect(na.omit(c(thyroidTrans,IGF1trans)),rownames(resid)[topHits])
+topThy = topThy[order(topThy)]
+residOrdered = resid[which(rownames(resid) %in% topThy),match(names(IGF1transResidOrdered),colnames(resid))]
+residOrdered = residOrdered[order(rownames(residOrdered)),]
+head(residOrdered)
+topThyENSG = as.character(transcriptNames$Ensembl.Gene.ID[match(topThy, transcriptNames$Ensembl.Transcript.ID)])
+topThyHGNC = as.character(transcriptNames$HGNC.symbol[match(topThyENSG,transcriptNames$Ensembl.Gene.ID)])
+
+
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "top Thyroid transcripts corr with IGF1\nall samples", xlab = "ordered by IGF1 expression")
+
+topThyCC = topThy
+
+```

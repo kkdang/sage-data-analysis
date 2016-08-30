@@ -5,11 +5,11 @@
 # output: html_document
 # ---
 
-library('rGithubClient')
-source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library('githubr')
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
 setwd('~/Computing/cranio/')
-proteinCoding_transcripts = getByBiotype(gene = FALSE)
+#proteinCoding_transcripts = getByBiotype(gene = FALSE)
 
 ## Filter and convert metadata
 sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
@@ -21,7 +21,14 @@ metadataFiltered$Sample_Type[grep("Sagittal",metadataFiltered$Sample_Type)] = "S
 metadataFiltered$Sample_Type = as.factor(metadataFiltered$Sample_Type)
 
 ## Remove outliers
-data.dge = generateDataObj('syn3064954')
+dataEnt = synGet('syn3064954')
+quants = read.csv(getFileLocation(dataEnt), row.names = 1)
+colnames(quants) = metadataFiltered$Px_Code[match(colnames(quants), paste("X", metadataFiltered$SAMPLE,sep = ""))]
+data.dge = DGEList(counts=quants,remove.zeros=TRUE)
+dim(data.dge)
+head(getCounts(data.dge))
+rm(quants)
+
 outlierTable = synTableQuery('SELECT * FROM syn3354503')
 outlierData = outlierTable@values
 noOutliers.dge = data.dge[,-which(colnames(data.dge) %in% outlierData$transcriptsSet)]
@@ -34,17 +41,30 @@ head(metadataMatching$Px_Code)
 head(colnames(noOutliers.dge))
 
 
-## PALX=5%, cases only
-palx5.dge = filterByFractionPresent(noOutliers.dge,fraction=0.05,minCount=3)
-palx5.dge = calcNormFactors(palx5.dge)
-cases.dge = palx5.dge[,-which(metadataMatching$Sample_Type == "Control")]
-dim(cases.dge)
-#save(cases.dge,file = "transcripts_cases_DGE.Robj.bz2",compress = "bzip2")
-#synStore(File(path = "transcripts_cases_DGE.Robj.bz2",parentId='syn2820780'),forceVersion=FALSE)
+## PALX=20%
+palx20.dge = filterByFractionPresent(noOutliers.dge,fraction=0.20,minCount=2)
+palx20.dge = calcNormFactors(palx20.dge)
+#save(palx20.dge,file = "transcripts_DGE.Robj.bz2",compress = "bzip2")
+#synStore(File(path = "transcripts_DGE.Robj.bz2",parentId='syn2820780'),forceVersion=FALSE)
 
 
 minimalSetNoSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","Initial_growth_duration_days")
 
+
+## Run model and get residuals
+tempModel = model.matrix(as.formula(paste("~",paste(minimalSetNoSex,collapse = "+"),sep = "")), data = metadataMatching)
+data.voom = voom(palx20.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+#save(fit,file = "transcripts_resid_fit.Robj.bz2",compress = "bzip2")
+resid = residuals(fit,y = data.voom)
+#write.table(formatC(resid,digits=6,format="fg"),file = "transcripts_resid.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = TRUE)
+
+## Save data to Synapse
+#synStore(File(path = "transcripts_resid.tsv",parentId='syn4893931'))
+#synStore(File(path = "transcripts_resid_cases.Robj.bz2",parentId='syn4893931'))
+
+##############
+# Cases only
 caseMeta = metadataMatching[-which(metadataMatching$Sample_Type == "Control"),]
 dim(caseMeta)
 head(colnames(cases.dge))
@@ -59,7 +79,7 @@ tempModel = model.matrix(as.formula(paste("~",paste(minimalSetNoSex,collapse = "
 data.voom = voom(cases.dge,tempModel,plot=FALSE) 
 fit = lmFit(data.voom,tempModel)
 #save(fit,file = "transcripts_resid_cases_pIGDD_fit.Robj.bz2",compress = "bzip2")
-resid = residuals(fit,y = data.voom)
+residCases = residuals(fit,y = data.voom)
 #write.table(formatC(resid,digits=6,format="fg"),file = "transcripts_resid_cases_pIGDD.tsv",quote = FALSE,sep = "\t",row.names = TRUE,col.names = TRUE)
 
 ## Save data to Synapse
