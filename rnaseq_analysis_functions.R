@@ -144,3 +144,11 @@ voom_on_mean=function(in.dge,plot=TRUE){
   tmp_fit = lmFit(voom_data,design=rep(1,ncol(voom_data)))
   residuals(tmp_fit,y = voom_data)
 }
+
+densityPlot=function(inDGE,mainLabel="",log=TRUE,ub=1){
+  x.cpm = cpm(x=inDGE,normalized.lib.sizes=TRUE,log=log)
+  plot(density(x.cpm[,1]), col = "blue", main = mainLabel, ylim = range(0,ub))
+  for (i in 2:ncol(x.cpm)) {
+    lines(density(x.cpm[,i]), col = "blue")
+  }
+}
