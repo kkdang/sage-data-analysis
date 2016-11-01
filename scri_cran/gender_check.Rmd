@@ -6,11 +6,17 @@ output: html_document
 ---
 
 ```{r message=FALSE,warning=FALSE}
-library('rGithubClient')
-sageCode = getRepo(repository="kkdang/sage-data-analysis")
-sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
-metadataEnt = synGet('syn3241418',version = 3)
-metadata = read.delim(getFileLocation(metadataEnt),header = TRUE)
+library('githubr')
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+sourceRepoFile(sageCode, 'biomart_fxns.R')
+```
+
+Get the metadata
+```{r}
+metadataTable = synTableQuery('SELECT Sample_ID,Sex FROM syn7486948')
+head(metadataTable@values)
+dim(metadataTable@values)
 ```
 
 
@@ -18,30 +24,40 @@ metadata = read.delim(getFileLocation(metadataEnt),header = TRUE)
 ```{r}
 Ygenes = getBM(attributes=c("ensembl_gene_id"),filters="chromosome_name",values="Y", mart=Hs)
 
-toFilter = c('File', 'Biomarker_ID', 'Time_Trial', 'LIBRARY', 'PCT_RIBOSOMAL_BASES','READ_GROUP','RIBOSOMAL_BASES','STRAND_SPECIFICITY','SeqSampleName')
-metadataFiltered = metadata[,-which(colnames(metadata)%in%toFilter)]
-head(metadataFiltered)
 
-palo.dge = generateDataObj('syn2820309')
-metadataFiltered = metadataFiltered[match(colnames(palo.dge),metadataFiltered$Px_Code),]
+dataEnt = read.delim(getFileLocation(synGet('syn7477102')), row.names = 1, header = TRUE)
+lookupTable = synTableQuery('SELECT * FROM syn7477113')
+head(lookupTable@values)
 
+newNames = lookupTable@values$Investigator_Sample_Name[match(colnames(dataEnt), paste("X",lookupTable@values$Sample_Name, sep = ""))]
+colnames(dataEnt) = newNames
 
-YgeneCounts = palo.dge[which(rownames(palo.dge) %in% Ygenes[,1]),]
+data.dge = DGEList(counts=dataEnt,remove.zeros=TRUE)
+palx5.dge = filterByFractionPresent(data.dge,fraction = 0.05)
+
+setdiff(colnames(data.dge), metadataTable@values$Sample_ID)
+setdiff(metadataTable@values$Sample_ID, colnames(data.dge))
+```
+
+Compare estimated to reported sex
+```{r}
+YgeneCounts = palx5.dge[which(rownames(palx5.dge) %in% Ygenes[,1]),]
 YgeneFraction = colSums(getCounts(YgeneCounts))/YgeneCounts$samples$lib.size
 hist(YgeneFraction, main = "fraction of counts from chrY genes")
+hist(YgeneFraction,xlim = range(1e-5,5e-4),breaks = 2000)
 
-predictedMales = names(which(YgeneFraction > 1e-4))
-reportedMales = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "M")])
-print("What samples are reported Males but not accourding to chrY counts?")
+predictedMales = names(which(YgeneFraction > 1.5e-4))
+reportedMales = as.character(metadataTable@values$Sample_ID[metadataTable@values$Sex == "M"])
+print("What samples are reported Males but chrY counts suggests female?")
 setdiff(reportedMales, predictedMales)
-print("What samples are predicted Males accourding to chrY counts but reported Females?")
+print("What samples are predicted Males according to chrY counts but reported Females?")
 setdiff(predictedMales, reportedMales)
 changeMtoF = setdiff(reportedMales, predictedMales)
 YgeneFraction[which(names(YgeneFraction)%in% changeMtoF)]
 hist(YgeneFraction,xlim = range(1e-7,5e-5),breaks = 200)
 
-predictedFemales = setdiff(colnames(palo.dge), predictedMales)
-reportedFemales = as.character(metadataFiltered$Px_Code[which(metadataFiltered$Sex == "F")])
+predictedFemales = setdiff(colnames(palx5.dge), predictedMales)
+reportedFemales = as.character(metadataTable@values$Sample_ID[metadataTable@values$Sex == "F"])
 print("What samples are predicted Female according to chrY counts but reported Male?")
 setdiff(predictedFemales, reportedFemales)
 print("What samples are reported Female but predicted Male?")
