@@ -16,7 +16,7 @@ processMetadataVal=function(plot=TRUE){
   metadataFiltered$Diagnosis = as.character(metadataFiltered$Diagnosis)
   metadataFiltered$Diagnosis[grep("Coronal",metadataFiltered$Diagnosis)] = "Coronal"
   metadataFiltered$Diagnosis[grep("Lambdoid",metadataFiltered$Diagnosis)] = "Lambdoid"
-  metadataFiltered$Diagnosis = as.factor(metadataFiltered$Diagnosis
+  metadataFiltered$Diagnosis = as.factor(metadataFiltered$Diagnosis)
   if (plot==TRUE) {
     
     op = par(mfrow = c(3,2))
