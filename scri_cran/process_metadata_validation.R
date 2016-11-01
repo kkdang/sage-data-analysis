@@ -2,7 +2,7 @@
 # Oct. 31, 2016
 # Standard processing of cranio metadata
 
-library(corrgram)
+#library(corrgram)
 
 processMetadataVal=function(plot=TRUE){
   metadataTable = synTableQuery('SELECT * FROM syn7486948')
@@ -36,8 +36,7 @@ processMetadataVal=function(plot=TRUE){
     dotchart(table(metadataFiltered$Diagnosis))
     
     
-    corrgram(metadataFiltered,lower.panel = panel.pts,upper.panel = panel.pie)
+    #corrgram(metadataFiltered,lower.panel = panel.pts,upper.panel = panel.pie)
   }
   return(metadataFiltered)
 }
-#rm(data,x,i,op,toFilter)
