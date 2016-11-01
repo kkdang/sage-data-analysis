@@ -66,7 +66,7 @@ pcaCorrelationVal=function(x,y){cor.test(x,y)$estimate }
 pcaLM=function(x,y){summary(lm(x ~ y))$coefficients[2,4]}
 pcaLMEst=function(x,y){summary(lm(x ~ y))$coefficients[2,1]}
 
-calc_plot_PC_corr=function(in.pca,inClinical,categorical=c(),k=15){
+calc_plot_PC_corr=function(in.pca,inClinical,categorical=c(),k=15,secondPlot=TRUE){
   # Using correlation against eigenvectors from all PALO data
   clinicalPCAcorrelations = matrix(NA, nrow = ncol(in.pca), ncol = ncol(inClinical))
   colnames(clinicalPCAcorrelations) = rep("default", ncol(clinicalPCAcorrelations))
@@ -110,8 +110,9 @@ calc_plot_PC_corr=function(in.pca,inClinical,categorical=c(),k=15){
   rdbu=brewer.pal(8,"RdBu")
   dataFiltered = clinicalPCAcorrelationEst
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
+  if (secondPlot == TRUE) {
   heatmap(t(dataFiltered[1:k,1:(ncol(dataFiltered)-5)]),Rowv = NA,Colv = NA,scale = "none",col=rdbu,margins = c(3,13))
-
+  }
   dataFiltered = clinicalPCAcorrelations
   dataFiltered[which(clinicalPCAcorrelations > cutoff)] = NA
   return(dataFiltered)
