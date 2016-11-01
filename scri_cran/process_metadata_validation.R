@@ -10,12 +10,14 @@ processMetadataVal=function(plot=TRUE){
   toFilter = c('Sample_ID', 'Order')
   metadataFiltered = metadataTable@values[,-which(colnames(metadataTable@values)%in%toFilter)]
   rownames(metadataFiltered) = metadataTable@values$Sample_ID
-
+  
+  metadataFiltered$Plate = as.factor(metadataFiltered$Plate)
+  metadataFiltered$Batch = as.factor(metadataFiltered$Batch)
+  metadataFiltered$Diagnosis = as.character(metadataFiltered$Diagnosis)
+  metadataFiltered$Diagnosis[grep("Coronal",metadataFiltered$Diagnosis)] = "Coronal"
+  metadataFiltered$Diagnosis[grep("Lambdoid",metadataFiltered$Diagnosis)] = "Lambdoid"
+  metadataFiltered$Diagnosis = as.factor(metadataFiltered$Diagnosis
   if (plot==TRUE) {
-    metadataFiltered$Diagnosis = as.character(metadataFiltered$Diagnosis)
-    metadataFiltered$Diagnosis[grep("Coronal",metadataFiltered$Diagnosis)] = "Coronal"
-    metadataFiltered$Diagnosis[grep("Lambdoid",metadataFiltered$Diagnosis)] = "Lambdoid"
-    metadataFiltered$Diagnosis = as.factor(metadataFiltered$Diagnosis)
     
     op = par(mfrow = c(3,2))
     hist(metadataFiltered$RNA_Days_to_Harvest)
