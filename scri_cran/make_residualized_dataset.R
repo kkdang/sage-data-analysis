@@ -6,6 +6,7 @@
 # ---
 
 library(githubr)
+library(edgeR)
 source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, "rnaseq_analysis_functions.R")
 setwd('~/Computing/cranio/')
