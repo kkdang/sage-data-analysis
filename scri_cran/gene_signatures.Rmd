@@ -9,13 +9,16 @@ output:
 
 ```{r message=FALSE,warning=FALSE}
 library("VennDiagram")
-library('rGithubClient')
+library('githubr')
 library('gplots')
 library('RColorBrewer')
 library(ReactomePA)
+library(synapseClient)
+synapseLogin()
 
-source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
 sourceRepoFile(sageCode, 'scri_cran/make_residualized_dataset.R')
+sourceRepoFile(sageCode, 'biomart_fxns.R')
 #sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
 proteinCoding_genes = getByBiotype()
 cutoff = 0.05
@@ -44,9 +47,18 @@ computeFit=function(in.dge,design,inContrast=my.contrasts[,1],plotTitle=modelNam
   DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
   xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < pval]
   xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
-  plotMA(testResults$fit,status = xStatus,cex=c(0.5),legend = FALSE,col=c("green3"),main = modelName)
+  limma::plotMA(testResults$fit,status = xStatus,cex=c(0.5),legend = FALSE,col=c("green3"),main = modelName)
   print(length(which(DEgeneTable$adj.P.Val<pval)))
   return(DEgeneTable)
+}
+
+plotDotchart=function(inAccumulatedCounts){
+  par(mfrow = c(1,1))
+  inAccumulatedCounts
+  x = data.frame(inAccumulatedCounts)
+  print(x)
+  x$num_sig = as.numeric(as.character(x$num_sig))
+  dotchart(x[,2],labels=x$model,xlab = "number significant genes",bg="tomato",lcolor="tomato",cex=1.2)
 }
 
 ```
@@ -115,7 +127,7 @@ accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
 DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
 xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
 xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
-plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
 DEgeneLists[[1]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
 names(DEgeneLists)[[1]] = modelName
 DEfits[[1]] = testResults$fit
@@ -128,7 +140,7 @@ accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
 DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
 xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
 xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
-plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
 DEgeneLists[[2]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
 names(DEgeneLists)[[2]] = modelName
 DEfits[[2]] = testResults$fit
@@ -141,7 +153,7 @@ accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
 DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
 xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
 xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
-plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
 DEgeneLists[[3]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
 names(DEgeneLists)[[3]] = modelName
 DEfits[[3]] = testResults$fit
@@ -155,7 +167,7 @@ accumulatedCounts = rbind(accumulatedCounts, c(modelName, testResults$numSig))
 DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
 xSig = rownames(DEgeneTable)[DEgeneTable$adj.P.Val < cutoff]
 xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
-plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName,ylim = range(-5,5))
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName,ylim = range(-5,5))
 DEgeneLists[[4]] = rownames(DEgeneTable)[which(DEgeneTable$adj.P.Val<cutoff)]
 names(DEgeneLists)[[4]] = modelName
 DEfits[[4]] = testResults$fit
@@ -199,11 +211,11 @@ print(paste('Number inconsistent', length(which(abs(c_inter_pos - s_inter_pos) >
 
 cs_names = setdiff(cs_inter, names(which(abs(c_inter_pos - s_inter_pos) > 0)))
 # # Save consistent gene list to Synapse
-write.csv(setdiff(cs_inter, names(which(abs(c_inter_pos - s_inter_pos) > 0))),file = "geneList_DEcs_consistentdirection.csv",row.names = FALSE)
-# tmp = File(path = 'geneList_DEcs_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
-tmp = synGet("syn3919299")
-tmp@filePath = "geneList_DEcs_consistentdirection.csv"
-tmp = synStore(entity = tmp)
+# write.csv(setdiff(cs_inter, names(which(abs(c_inter_pos - s_inter_pos) > 0))),file = "geneList_DEcs_consistentdirection.csv",row.names = FALSE)
+# # tmp = File(path = 'geneList_DEcs_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp = synGet("syn3919299")
+# tmp@filePath = "geneList_DEcs_consistentdirection.csv"
+# tmp = synStore(entity = tmp)
 
 
 
@@ -245,11 +257,11 @@ print(paste('Number inconsistent', length(which(abs(s_inter_pos - m_inter_pos) >
 
 sm_names = setdiff(sm_inter, names(which(abs(s_inter_pos - m_inter_pos) > 0)))
 # Save consistent gene list to Synapse
-write.csv(setdiff(sm_inter, names(which(abs(s_inter_pos - m_inter_pos) > 0))),file = "geneList_DEsm_consistentdirection.csv",row.names = FALSE)
-tmp = synGet("syn3919297")
-# tmp = File(path = 'geneList_DEsm_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
-tmp@filePath = "geneList_DEsm_consistentdirection.csv"
-tmp = synStore(entity = tmp)
+# write.csv(setdiff(sm_inter, names(which(abs(s_inter_pos - m_inter_pos) > 0))),file = "geneList_DEsm_consistentdirection.csv",row.names = FALSE)
+# tmp = synGet("syn3919297")
+# # tmp = File(path = 'geneList_DEsm_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
+# tmp@filePath = "geneList_DEsm_consistentdirection.csv"
+# tmp = synStore(entity = tmp)
 
 
 
@@ -281,11 +293,11 @@ print(paste('Number inconsistent', length(inconsistentNames), sep = ' '))
 
 csm_names = setdiff(csm_inter, inconsistentNames)
 # Save consistent gene list to Synapse
-write.csv(setdiff(csm_inter, inconsistentNames),file = "geneList_DEcsm_consistentdirection.csv",row.names = FALSE)
+# write.csv(setdiff(csm_inter, inconsistentNames),file = "geneList_DEcsm_consistentdirection.csv",row.names = FALSE)
 # tmp = File(path = 'geneList_DEcsm_consistentdirection.csv',synapseStore = TRUE,parentId='syn2820780')
-tmp = synGet("syn3919270")
-tmp@filePath = 'geneList_DEcsm_consistentdirection.csv'
-tmp = synStore(entity = tmp)
+# tmp = synGet("syn3919270")
+# tmp@filePath = 'geneList_DEcsm_consistentdirection.csv'
+# tmp = synStore(entity = tmp)
 ```
 
 
@@ -294,9 +306,9 @@ tmp = synStore(entity = tmp)
 Pathway analysis of suture-type specific gene lists
 ```{r}
 cOnly = setdiff(DEgeneLists$`Coronal-control sig factors`, union(DEgeneLists$`Metopic-control sig factors`, DEgeneLists$`Sagittal-control sig factors`))
-write.csv(cOnly,file = "geneList_coronalDE_only.csv",row.names = FALSE)
-tmp = File(path = 'geneList_coronalDE_only.csv',synapseStore = TRUE,parentId='syn4957282')
-tmp = synStore(entity = tmp)
+# write.csv(cOnly,file = "geneList_coronalDE_only.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_coronalDE_only.csv',synapseStore = TRUE,parentId='syn4957282')
+# tmp = synStore(entity = tmp)
 cEntrez = univEnrez$entrez[match(cOnly, univEnrez$`rownames(pc_palx20.dge)`)]
 Cpath = enrichPathway(gene=cEntrez,universe = as.character(univEnrez$entrez), readable=T)
 head(summary(Cpath))
@@ -306,24 +318,162 @@ enrichMap(Cpath, vertex.label.cex = 0.8)
 
 
 sOnly = setdiff(DEgeneLists$`Sagittal-control sig factors`, union(DEgeneLists$`Metopic-control sig factors`, DEgeneLists$`Coronal-control sig factors`))
-write.csv(sOnly,file = "geneList_sagittalDE_only.csv",row.names = FALSE)
-tmp = File(path = 'geneList_sagittalDE_only.csv',synapseStore = TRUE,parentId='syn4957282')
-tmp = synStore(entity = tmp)
+# write.csv(sOnly,file = "geneList_sagittalDE_only.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_sagittalDE_only.csv',synapseStore = TRUE,parentId='syn4957282')
+# tmp = synStore(entity = tmp)
 sEntrez = na.omit(as.character(univEnrez$entrez[match(sOnly, univEnrez$`rownames(pc_palx20.dge)`)]))
 sPath = enrichPathway(gene=sEntrez,universe = as.character(univEnrez$entrez), readable=T)
 head(summary(sPath))
 
 
 mOnly = setdiff(DEgeneLists$`Metopic-control sig factors`, union(DEgeneLists$`Sagittal-control sig factors`, DEgeneLists$`Coronal-control sig factors`))
-write.csv(mOnly,file = "geneList_metopicDE_only.csv",row.names = FALSE)
-tmp = File(path = 'geneList_metopicDE_only.csv',synapseStore = TRUE,parentId='syn4957282')
-tmp = synStore(entity = tmp)
+# write.csv(mOnly,file = "geneList_metopicDE_only.csv",row.names = FALSE)
+# tmp = File(path = 'geneList_metopicDE_only.csv',synapseStore = TRUE,parentId='syn4957282')
+# tmp = synStore(entity = tmp)
 mEntrez = na.omit(as.character(univEnrez$entrez[match(mOnly, univEnrez$`rownames(pc_palx20.dge)`)]))
 mPath = enrichPathway(gene=mEntrez,universe = as.character(univEnrez$entrez), readable=T)
 head(summary(mPath))
 
+
+# Entire suture-type sig list set
+cEntrez = univEnrez$entrez[match(DEgeneLists$`Coronal-control sig factors`, univEnrez$`rownames(pc_palx20.dge)`)]
+Cpath = enrichPathway(gene=na.omit(cEntrez),universe = as.character(univEnrez$entrez), readable=T)
+head(summary(Cpath))
+barplot(Cpath,showCategory = 25, main = "Coronal")
+enrichMap(Cpath, vertex.label.cex = 0.8)
+
+
+sEntrez = na.omit(as.character(univEnrez$entrez[match(DEgeneLists$`Sagittal-control sig factors`, univEnrez$`rownames(pc_palx20.dge)`)]))
+sPath = enrichPathway(gene=na.omit(sEntrez),universe = as.character(univEnrez$entrez), readable=T)
+head(summary(sPath))
+
+
+mEntrez = na.omit(as.character(univEnrez$entrez[match(DEgeneLists$`Metopic-control sig factors`, univEnrez$`rownames(pc_palx20.dge)`)]))
+mPath = enrichPathway(gene=na.omit(mEntrez),universe = as.character(univEnrez$entrez), readable=T)
+head(summary(mPath))
 ```
 
+
+
+
+
+# Variations on a theme of four (three) groups
+```{r} 
+accumulatedCounts = matrix(ncol=2,dimnames=list(row=NA,col=c("model", "num_sig")))
+accumulatedResults = matrix(NA,nrow = nrow(pc_palo.dge),ncol = 1,dimnames = list(rownames(pc_palo.dge),c("default")))
+DEgeneLists = list()
+DEfits = list()
+
+my.contrasts = makeContrasts(coronalVScontrol = Sample_TypeCoronal-Sample_TypeControl, MetopicVScontrol = Sample_TypeMetopic-Sample_TypeControl, sagittalVScontrol = Sample_TypeSagittal-Sample_TypeControl, lambdoidVScontrol = Sample_TypeLambdoid-Sample_TypeControl, levels=STmodel)
+data.voom = voom(in.dge,STmodel,plot=FALSE)
+fit = lmFit(data.voom,STmodel)
+
+## Coronal
+op = par(mfrow = c(2,2))
+modelName = "Coronal-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,1],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val < cutoff),which(DEgeneTable$logFC >= 1))]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, length(xSig)))
+DEgeneLists[[1]] = rownames(DEgeneTable)[which(rownames(DEgeneTable) %in% xSig)]
+names(DEgeneLists)[[1]] = modelName
+DEfits[[1]] = testResults$fit
+names(DEfits)[[1]] = modelName
+
+## Metopic
+modelName = "Metopic-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,2],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val < cutoff),which(DEgeneTable$logFC >= 1))]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, length(xSig)))
+DEgeneLists[[2]] = rownames(DEgeneTable)[which(rownames(DEgeneTable) %in% xSig)]
+names(DEgeneLists)[[2]] = modelName
+DEfits[[2]] = testResults$fit
+names(DEfits)[[2]] = modelName
+
+## Sagittal
+modelName = "Sagittal-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,3],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val < cutoff),which(DEgeneTable$logFC >= 1))]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, length(xSig)))
+DEgeneLists[[3]] = rownames(DEgeneTable)[which(rownames(DEgeneTable) %in% xSig)]
+names(DEgeneLists)[[3]] = modelName
+DEfits[[3]] = testResults$fit
+names(DEfits)[[3]] = modelName
+
+
+## Lambdoid
+modelName = "Lambdoid-control sig factors"
+testResults = calculateDE(in.fit=fit,inContrast=my.contrasts[,4],pcutoff=cutoff,plotTitle=modelName,limma = TRUE)
+DEgeneTable = topTable(testResults$fit,number = nrow(in.dge))
+xSig = rownames(DEgeneTable)[intersect(which(DEgeneTable$adj.P.Val < cutoff),which(DEgeneTable$logFC >= 1))]
+xStatus = as.numeric(rownames(testResults$fit) %in% xSig)
+limma::plotMA(testResults$fit,status = xStatus,cex=c(0.3,0.5),legend = FALSE,col=c("green3"),main = modelName, ylim = range(-5,5))
+accumulatedCounts = rbind(accumulatedCounts, c(modelName, length(xSig)))
+DEgeneLists[[4]] = rownames(DEgeneTable)[which(rownames(DEgeneTable) %in% xSig)]
+names(DEgeneLists)[[4]] = modelName
+DEfits[[4]] = testResults$fit
+names(DEfits)[[4]] = modelName
+par(op)
+```
+
+Summary
+```{r echo=FALSE}
+accumulatedCounts = accumulatedCounts[-1,]
+venn.diagram(list(Coronal=DEgeneLists$`Coronal-control sig factors`,Sagittal=DEgeneLists$`Sagittal-control sig factors`,Metopic=DEgeneLists$`Metopic-control sig factors`,Lambdoid=DEgeneLists$`Lambdoid-control sig factors`),filename="paper1/figure\ drafts/venn_case-control_4groups_FCgt1.tiff",fill = c("grey63","gold2","coral","white"))
+
+venn.diagram(list(Coronal=DEgeneLists$`Coronal-control sig factors`,Sagittal=DEgeneLists$`Sagittal-control sig factors`,Metopic=DEgeneLists$`Metopic-control sig factors`),filename="paper1/figure\ drafts/venn_case-control_3groups_FCgt1.tiff",fill = c("grey63","gold2","coral"))
+
+
+#venn.diagram(list(Coronal=DEgeneLists$'Coronal-control sig factors',Sagittal=DEgeneLists$'Sagittal-control sig factors',Metopic=DEgeneLists$'Metopic-control sig factors',case=de_all),filename="venn_case-control_and_groups.tiff",fill = c("grey63","gold2","coral","paleturquoise"))
+
+plotDotchart(inAccumulatedCounts = accumulatedCounts)
+
+```
+Pathway analysis of suture-type specific gene lists
+```{r}
+# Suture=type unique genes only
+cOnly = setdiff(DEgeneLists$`Coronal-control sig factors`, union(DEgeneLists$`Metopic-control sig factors`, DEgeneLists$`Sagittal-control sig factors`))
+cEntrez = univEnrez$entrez[match(cOnly, univEnrez$`rownames(pc_palx20.dge)`)]
+Cpath = enrichPathway(gene=cEntrez,universe = as.character(univEnrez$entrez), readable=T)
+head(summary(Cpath))
+
+sOnly = setdiff(DEgeneLists$`Sagittal-control sig factors`, union(DEgeneLists$`Metopic-control sig factors`, DEgeneLists$`Coronal-control sig factors`))
+sEntrez = na.omit(as.character(univEnrez$entrez[match(sOnly, univEnrez$`rownames(pc_palx20.dge)`)]))
+sPath = enrichPathway(gene=sEntrez,universe = as.character(univEnrez$entrez), readable=T)
+head(summary(sPath))
+
+mOnly = setdiff(DEgeneLists$`Metopic-control sig factors`, union(DEgeneLists$`Sagittal-control sig factors`, DEgeneLists$`Coronal-control sig factors`))
+mEntrez = na.omit(as.character(univEnrez$entrez[match(mOnly, univEnrez$`rownames(pc_palx20.dge)`)]))
+mPath = enrichPathway(gene=mEntrez,universe = as.character(univEnrez$entrez), readable=T)
+head(summary(mPath))
+
+# Entire suture-type sig list set
+cEntrez = univEnrez$entrez[match(DEgeneLists$`Coronal-control sig factors`, univEnrez$`rownames(pc_palx20.dge)`)]
+Cpath = enrichPathway(gene=cEntrez,universe = as.character(univEnrez$entrez), readable=T)
+head(summary(Cpath))
+
+sEntrez = na.omit(as.character(univEnrez$entrez[match(DEgeneLists$`Sagittal-control sig factors`, univEnrez$`rownames(pc_palx20.dge)`)]))
+sPath = enrichPathway(gene=sEntrez,universe = as.character(univEnrez$entrez), readable=T)
+head(summary(sPath))
+barplot(sPath,showCategory = 25, main = "Sagittal")
+enrichMap(sPath, vertex.label.cex = 0.8)
+
+
+mEntrez = na.omit(as.character(univEnrez$entrez[match(DEgeneLists$`Metopic-control sig factors`, univEnrez$`rownames(pc_palx20.dge)`)]))
+mPath = enrichPathway(gene=mEntrez,universe = as.character(univEnrez$entrez), readable=T)
+head(summary(mPath))
+barplot(mPath,showCategory = 25, main = "Metopic")
+enrichMap(mPath, vertex.label.cex = 0.8)
+
+```
 
 
 
