@@ -1,0 +1,219 @@
+---
+title: "correlation_analysis.Rmd"
+author: "Kristen Dang"
+date: "7/18/2017"
+output: html_document
+---
+
+```{r message=FALSE,warning=FALSE,echo=FALSE}
+library(synapseClient)
+synapseLogin()
+library(gplots)
+library(MASS)
+library("VennDiagram")
+library('githubr')
+library('RColorBrewer')
+library(ConsensusClusterPlus)
+
+
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
+sourceRepoFile(sageCode, 'biomart_fxns.R')
+setwd('~/Computing/cranio/IGF1-RUNX2-TWIST1/')
+```
+
+
+# Get data
+```{r}
+resid = read.delim(getFileLocation(synGet("syn8555302")),row.names = 1)
+resid[1:5,1:6]
+```
+
+
+# Genes of Interest
+```{r}
+genesOfInterest = c("RUNX2", "IGF1", "TWIST1", "GSK3b")
+geneNames = getBM(attributes=c("ensembl_gene_id","hgnc_symbol"),filters="hgnc_symbol",values=genesOfInterest,mart=Hs)    
+print(geneNames)
+
+temp = data.matrix(resid[which(rownames(resid) %in% geneNames$ensembl_gene_id),])
+rownames(temp) = geneNames$hgnc_symbol[match(rownames(temp),geneNames$ensembl_gene_id)]
+
+
+heatmap.2(temp,trace="none",scale="none", col=bluered,cexRow = 0.9)
+```
+
+
+# Overall data dist and filtering
+```{r}
+heatmap.2(data.matrix(resid[1:100,]),trace = "none",scale = "none",col=bluered)
+allSD = apply(resid,MARGIN = 1,FUN = sd)
+hist(allSD,breaks = 50)
+truehist(allSD)
+sum(allSD > 0.5)
+highVar = which(allSD > 0.5)
+
+
+intersect(geneNames$ensembl_gene_id, names(highVar))
+
+allSD[which(names(allSD) == geneNames$ensembl_gene_id[1])]
+```
+
+
+
+# What is the signal in RUNX2, TWIST1, GSK3B for patients with high/low IGF1?
+```{r}
+results_pam = ConsensusClusterPlus(d=temp,maxK = 6,reps = 50,clusterAlg = "pam",distance = "pearson",pFeature = 1,writeTable=TRUE,plot="pdf",title="consCluster_4genes_pam_pear_pF1")
+save(results_pam,file = "consClus_results_4gene_pam_p1.Robj.bz2",compress = "bzip2")
+
+
+# Plot median gene signature for each group
+gp1 = names(which(results_pam[[3]]$consensusClass == 1))
+gp1Signature = apply(temp[,colnames(temp) %in% gp1],MARGIN = 1,median)
+gp2 = names(which(results_pam[[3]]$consensusClass == 2))
+gp2Signature = apply(temp[,colnames(temp) %in% gp2],MARGIN = 1,median)
+gp3 = names(which(results_pam[[3]]$consensusClass == 3))
+gp3Signature = apply(temp[,colnames(temp) %in% gp3],MARGIN = 1,median)
+dotchart(t(cbind(gp1Signature,gp2Signature,gp3Signature)),xlab = "residualized expression")
+
+```
+
+
+# Getting diagnosis and other metadata
+```{r}
+## Filter and convert metadata
+sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
+metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+metadataFiltered$Sample_Type = as.character(metadataFiltered$Sample_Type)
+metadataFiltered$Sample_Type[grep("Coronal",metadataFiltered$Sample_Type)] = "Coronal"
+metadataFiltered$Sample_Type[grep("Metopic",metadataFiltered$Sample_Type)] = "Metopic"
+metadataFiltered$Sample_Type[grep("Sagittal",metadataFiltered$Sample_Type)] = "Sagittal"
+metadataFiltered$Sample_Type = as.factor(metadataFiltered$Sample_Type)
+
+editedColNames = substr(colnames(resid),start = 2,stop = 8)
+ncol(resid)
+colDiag = metadataFiltered$Sample_Type[match(editedColNames,metadataFiltered$SAMPLE)]
+length(colDiag)
+levels(colDiag)
+```
+
+
+# Correlation: what is the expression profile of correlates of RUNX2, TWIST1, IGF1?
+```{r fig.height=8,fig.width=8}
+allCors = cor(t(resid[highVar,]))
+hist(allCors[lower.tri(allCors)])
+truehist(allCors[lower.tri(allCors)])
+diagColors = brewer.pal(n = 5, name = "Accent")
+
+testCorrelationWith=function(inGene,adjMethod="BH") {
+  results = apply(data.matrix(resid[highVar,]),MARGIN = 1,function(x){ cor.test(x,inGene,method = "pearson")} )
+  allP = p.adjust(p = sapply(results,function(x) x$p.value),method = adjMethod)
+  allEst = sapply(results,function(x) x$estimate)
+  return(list(pvalue=allP,correlations=allEst))
+}  
+
+IGF1correlates = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[2],]))
+hist(IGF1correlates$pvalue)
+truehist(IGF1correlates$pvalue)
+truehist(IGF1correlates$correlations)
+IGFgroup = names(IGF1correlates$pvalue)[intersect(which(IGF1correlates$pvalue < 0.05), which(abs(IGF1correlates$correlations) > 0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% IGFgroup]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "IGF1"])
+dispLab = rep("", length(IGFgroup))
+dispLab[tokeep] = "IGF1"
+heatmap.2(data.matrix(resid[rownames(resid) %in% IGFgroup,]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "IGF1 correlates",ColSideColors = diagColors[as.numeric(colDiag)],key = TRUE )
+legend("bottomleft",inset = .01,legend = levels(colDiag),pch = 15, col = diagColors)
+
+
+# TWIST
+TWIST1correlates = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[4],]))
+hist(TWIST1correlates$pvalue)
+truehist(TWIST1correlates$pvalue)
+truehist(TWIST1correlates$correlations)
+TWISTgroup = names(TWIST1correlates$pvalue)[intersect(which(TWIST1correlates$pvalue < 0.05), which(abs(TWIST1correlates$correlations) > 0.5))]
+
+labRows = rownames(resid)[rownames(resid) %in% TWISTgroup]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "TWIST1"])
+dispLab = rep("", length(TWISTgroup))
+dispLab[tokeep] = "TWIST1"
+heatmap.2(data.matrix(resid[rownames(resid) %in% TWISTgroup,]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "TWIST1 correlates",ColSideColors = diagColors[as.numeric(colDiag)],key = TRUE )
+legend("bottomleft",inset = .01,legend = levels(colDiag),pch = 15, col = diagColors)
+
+
+#RUNX2
+RUNX2correlates = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[3],]))
+hist(RUNX2correlates$pvalue)
+truehist(RUNX2correlates$pvalue)
+truehist(RUNX2correlates$correlations)
+RUNXgroup = names(RUNX2correlates$pvalue)[intersect(which(RUNX2correlates$pvalue < 0.05), which(abs(RUNX2correlates$correlations) > 0.5))]
+
+labRows = rownames(resid)[rownames(resid) %in% RUNXgroup]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "RUNX2"])
+dispLab = rep("", length(RUNXgroup))
+dispLab[tokeep] = "RUNX2"
+heatmap.2(data.matrix(resid[rownames(resid) %in% RUNXgroup,]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "RUNX2 correlates",ColSideColors = diagColors[as.numeric(colDiag)],key = TRUE )
+legend("bottomleft",inset = .01,legend = levels(colDiag),pch = 15, col = diagColors)
+
+```
+
+
+
+# List the genes that correlate with each 
+```{r}
+IGFgroupHGNC = getHGNC(inENSG = IGFgroup)
+print(unique(IGFgroupHGNC$hgnc_symbol))
+
+
+TWISTgroupHGNC = getHGNC(inENSG = TWISTgroup)
+print(unique(TWISTgroupHGNC$hgnc_symbol))
+
+RUNXgroupHGNC = getHGNC(inENSG = RUNXgroup)
+print(unique(RUNXgroupHGNC$hgnc_symbol))
+
+venn.diagram(x = list("IGF1"=IGFgroupHGNC$hgnc_symbol,"TWIST"=TWISTgroupHGNC$hgnc_symbol,"RUNX2"=RUNXgroupHGNC$hgnc_symbol),filename = "venn-3gene-analysis.tiff",fill = c("cornflowerblue", "green", "yellow"))
+
+print(intersect(intersect(IGFgroupHGNC$hgnc_symbol,TWISTgroupHGNC$hgnc_symbol),RUNXgroupHGNC$hgnc_symbol))
+```
+
+
+# Do patients with strong correlate profiles in IGF1 overlap with patients with strong correlate signals in [RUNX2|TWIST1]?
+```{r}
+gpColors = c("tomato", "dodgerblue", "gold", "gray")
+
+results_pam = ConsensusClusterPlus(d=data.matrix(resid[which(rownames(resid) %in% IGFgroup),]),pItem=0.9,maxK = 8,reps = 100,clusterAlg = "pam",distance = "pearson",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_IGFgenes_pam_pF7_pI9")
+save(results_pam,file = "consCluster_IGFgenes_pam_pF7_pI9.Robj.bz2",compress = "bzip2")
+IGF3gp = results_pam[[3]]$consensusClass
+
+heatmap.2(data.matrix(resid[rownames(resid) %in% IGFgroup,]),trace = "none",scale = "none",col = bluered,labRow = "",labCol = "",main = "IGF1 correlates",ColSideColors = gpColors[IGF3gp],key = TRUE )
+legend("bottomleft",inset = .01,legend = c("1", "2", "3"),pch = 15, col = gpColors)
+
+
+
+# TWIST1
+results_pam = ConsensusClusterPlus(d=data.matrix(resid[which(rownames(resid) %in% TWISTgroup),]),pItem=0.9,maxK = 6,reps = 100,clusterAlg = "pam",distance = "pearson",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_TWISTgenes_pam_pF7_pI9")
+save(results_pam,file = "consCluster_TWISTgenes_pam_pF7_pI9.Robj.bz2",compress = "bzip2")
+TWIST4gp = results_pam[[4]]$consensusClass
+
+heatmap.2(data.matrix(resid[rownames(resid) %in% TWISTgroup,]),trace = "none",scale = "none",col = bluered,labRow = "",labCol = "",main = "TWIST1 correlates",ColSideColors = gpColors[TWIST4gp],key = TRUE )
+legend("bottomleft",inset = .01,legend = c("1", "2", "3","4"),pch = 15, col = gpColors)
+
+# RUNX1
+results_pam = ConsensusClusterPlus(d=data.matrix(resid[which(rownames(resid) %in% RUNXgroup),]),pItem=0.9,maxK = 6,reps = 100,clusterAlg = "pam",distance = "pearson",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_RUNXgenes_pam_pF7_pI9")
+save(results_pam,file = "consCluster_RUNXgenes_pam_pF7_pI9.Robj.bz2",compress = "bzip2")
+RUNX2gp = results_pam[[2]]$consensusClass
+
+heatmap.2(data.matrix(resid[rownames(resid) %in% RUNXgroup,]),trace = "none",scale = "none",col = bluered,labRow = "",labCol = "",main = "RUNX1 correlates",ColSideColors = gpColors[RUNX2gp],key = TRUE )
+legend("bottomleft",inset = .01,legend = c("1", "2"),pch = 15, col = gpColors)
+
+
+venn.diagram(list(RUNX2=names(RUNX2gp[RUNX2gp == 1]),TWIST1=names(TWIST4gp[TWIST4gp==1]),IGF1=names(IGF3gp[IGF3gp==1 | IGF3gp == 2])),filename = "venn-samps-strongvar.tiff",fill = c("cornflowerblue", "green", "yellow"))
+```
+
+# Classify patients into groups based on signal of correlates of IGF1, RUNX2, TWIST1?
+### Would need to iteratively choose the cutoff for correlated genes to include.
+### Show whether there is a distinct diagnostic group based on these genes, separate from controls.
+
+
+# Plot / ANOVA of differences in mean expression per diagnostic group 
+
