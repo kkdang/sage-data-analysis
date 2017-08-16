@@ -14,6 +14,7 @@ library("VennDiagram")
 library('githubr')
 library('RColorBrewer')
 library(ConsensusClusterPlus)
+library('DGCA')
 
 
 source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
@@ -50,8 +51,9 @@ allSD = apply(resid,MARGIN = 1,FUN = sd)
 hist(allSD,breaks = 50)
 truehist(allSD)
 sum(allSD > 0.5)
+medVar = which(allSD > 0.2)
 highVar = which(allSD > 0.5)
-
+veryHighVar = which(allSD > 0.7)
 
 intersect(geneNames$ensembl_gene_id, names(highVar))
 
@@ -61,7 +63,7 @@ allSD[which(names(allSD) == geneNames$ensembl_gene_id[1])]
 
 
 # What is the signal in RUNX2, TWIST1, GSK3B for patients with high/low IGF1?
-```{r}
+```{r eval=FALSE}
 results_pam = ConsensusClusterPlus(d=temp,maxK = 6,reps = 50,clusterAlg = "pam",distance = "pearson",pFeature = 1,writeTable=TRUE,plot="pdf",title="consCluster_4genes_pam_pear_pF1")
 save(results_pam,file = "consClus_results_4gene_pam_p1.Robj.bz2",compress = "bzip2")
 
@@ -98,7 +100,7 @@ levels(colDiag)
 
 
 # Correlation: what is the expression profile of correlates of RUNX2, TWIST1, IGF1?
-```{r fig.height=8,fig.width=8}
+```{r fig.height=8,fig.width=8,eval=FALSE}
 allCors = cor(t(resid[highVar,]))
 hist(allCors[lower.tri(allCors)])
 truehist(allCors[lower.tri(allCors)])
@@ -160,7 +162,7 @@ legend("bottomleft",inset = .01,legend = levels(colDiag),pch = 15, col = diagCol
 
 
 # List the genes that correlate with each 
-```{r}
+```{r eval=FALSE}
 IGFgroupHGNC = getHGNC(inENSG = IGFgroup)
 print(unique(IGFgroupHGNC$hgnc_symbol))
 
@@ -178,7 +180,7 @@ print(intersect(intersect(IGFgroupHGNC$hgnc_symbol,TWISTgroupHGNC$hgnc_symbol),R
 
 
 # Do patients with strong correlate profiles in IGF1 overlap with patients with strong correlate signals in [RUNX2|TWIST1]?
-```{r}
+```{r eval=FALSE}
 gpColors = c("tomato", "dodgerblue", "gold", "gray")
 
 results_pam = ConsensusClusterPlus(d=data.matrix(resid[which(rownames(resid) %in% IGFgroup),]),pItem=0.9,maxK = 8,reps = 100,clusterAlg = "pam",distance = "pearson",pFeature = 0.7,writeTable=TRUE,plot="pdf",title="consCluster_IGFgenes_pam_pF7_pI9")
@@ -210,10 +212,340 @@ legend("bottomleft",inset = .01,legend = c("1", "2"),pch = 15, col = gpColors)
 venn.diagram(list(RUNX2=names(RUNX2gp[RUNX2gp == 1]),TWIST1=names(TWIST4gp[TWIST4gp==1]),IGF1=names(IGF3gp[IGF3gp==1 | IGF3gp == 2])),filename = "venn-samps-strongvar.tiff",fill = c("cornflowerblue", "green", "yellow"))
 ```
 
+
+# Explicit test for differential correlation between cases and controls
+```{r}
+metadataMatching = metadataFiltered[metadataFiltered$SAMPLE %in% substr(colnames(resid),start = 2,stop = 8),]
+metadataMatching = metadataMatching[match(substr(colnames(resid),start = 2,stop = 8),metadataMatching$SAMPLE),]
+caseControl = model.matrix(~0+caseStatus,data = metadataMatching)
+head(metadataMatching$SAMPLE)
+head(colnames(resid))
+tail(metadataMatching$SAMPLE)
+tail(colnames(resid))
+
+dgca_res=ddcorAll(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), adjust="BH", nPerm=0,classify=FALSE,corrType = "pearson")
+hist(dgca_res$pValDiff_adj)
+truehist(dgca_res$pValDiff_adj)
+min(dgca_res$pValDiff_adj)
+which(dgca_res$pValDiff_adj < 0.06)
+head(dgca_res, 20)
+Gene1HGNC = getHGNC(inENSG = dgca_res$Gene1)
+Gene2HGNC = getHGNC(inENSG = dgca_res$Gene2)
+
+i = 1
+plotCors(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), geneA=dgca_res$Gene1[i], geneB=dgca_res$Gene2[i],xlab = Gene1HGNC$hgnc_symbol[i],ylab = Gene2HGNC$hgnc_symbol[i])
+
+i = 2
+plotCors(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), geneA=dgca_res$Gene1[i], geneB=dgca_res$Gene2[i],xlab = Gene1HGNC$hgnc_symbol[i],ylab = Gene2HGNC$hgnc_symbol[i])
+
+i = 3
+plotCors(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), geneA=dgca_res$Gene1[i], geneB=dgca_res$Gene2[i],xlab = Gene1HGNC$hgnc_symbol[i],ylab = Gene2HGNC$hgnc_symbol[i])
+
+i = 4
+plotCors(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), geneA=dgca_res$Gene1[i], geneB=dgca_res$Gene2[i],xlab = Gene1HGNC$hgnc_symbol[i],ylab = Gene2HGNC$hgnc_symbol[i])
+
+i = 5
+plotCors(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), geneA=dgca_res$Gene1[i], geneB=dgca_res$Gene2[i],xlab = Gene1HGNC$hgnc_symbol[i],ylab = Gene2HGNC$hgnc_symbol[i])
+
+i = 6
+plotCors(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), geneA=dgca_res$Gene1[i], geneB=dgca_res$Gene2[i],xlab = Gene1HGNC$hgnc_symbol[i],ylab = Gene2HGNC$hgnc_symbol[i])
+
+
+dgca_resWPerm=ddcorAll(inputMat=resid[veryHighVar,], design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), adjust="perm", nPerm=100,classify=FALSE)
+hist(dgca_res$pValDiff_adj)
+truehist(dgca_res$pValDiff_adj)
+min(dgca_res$pValDiff_adj)
+which(dgca_res$pValDiff_adj < 0.06)
+head(dgca_res, 20)
+Gene1HGNC = getHGNC(inENSG = dgca_res$Gene1)
+Gene2HGNC = getHGNC(inENSG = dgca_res$Gene2)
+
+```
+
+
+
+
+# Explicit test for case-control differential correlation for genes correlated with IGF1, RUNX2, TWIST1
+```{r results="hide"}
+# IGF1
+dgca_res=ddcorAll(inputMat=resid, design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), adjust="perm", nPerm=250,classify=FALSE,corrType = "pearson",splitSet = geneNames$ensembl_gene_id[which(geneNames$hgnc_symbol == "IGF1")])
+```
+```{r}
+hist(dgca_res$pValDiff_adj)
+truehist(dgca_res$pValDiff_adj)
+min(dgca_res$pValDiff_adj)
+head(dgca_res, 20)
+```
+
+# GSK3B
+```{r results="hide"}
+dgca_res_GSK3b=ddcorAll(inputMat=resid, design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), adjust="perm", nPerm=250,classify=FALSE,corrType = "pearson",splitSet = geneNames$ensembl_gene_id[which(geneNames$hgnc_symbol == "GSK3B")])
+```
+```{r}
+hist(dgca_res_GSK3b$pValDiff_adj)
+truehist(dgca_res_GSK3b$pValDiff_adj)
+min(dgca_res_GSK3b$pValDiff_adj)
+head(dgca_res_GSK3b, 20)
+```
+
+
+# TWIST1
+```{r results="hide"}
+dgca_res_TWIST=ddcorAll(inputMat=resid, design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), adjust="perm", nPerm=250,classify=FALSE,corrType = "pearson",splitSet = geneNames$ensembl_gene_id[which(geneNames$hgnc_symbol == "TWIST1")])
+```
+```{r}
+hist(dgca_res_TWIST$pValDiff_adj)
+truehist(dgca_res_TWIST$pValDiff_adj)
+min(dgca_res_TWIST$pValDiff_adj)
+head(dgca_res_TWIST, 20)
+```
+
+# RUNX2
+```{r results="hide"}
+dgca_res_RUNX=ddcorAll(inputMat=resid, design=caseControl, compare=c("caseStatuscase", "caseStatuscontrol"), adjust="perm", nPerm=250,classify=FALSE,corrType = "pearson",splitSet = geneNames$ensembl_gene_id[which(geneNames$hgnc_symbol == "RUNX2")])
+```
+```{r}
+hist(dgca_res_RUNX$pValDiff_adj)
+truehist(dgca_res_RUNX$pValDiff_adj)
+min(dgca_res_RUNX$pValDiff_adj)
+head(dgca_res_RUNX, 20)
+
+```
+
+
+
+# Looking at genes that correlate with IGF1/TWIST1/RUNX2 separately in cases 
+```{r}
+cases = which(metadataMatching$caseStatus == "case")
+testCorrelationWith=function(inGene,adjMethod="BH") {
+  results = apply(data.matrix(resid[highVar,cases]),MARGIN = 1,function(x){ cor.test(x,inGene,method = "pearson")} )
+  allP = p.adjust(p = sapply(results,function(x) x$p.value),method = adjMethod)
+  allEst = sapply(results,function(x) x$estimate)
+  return(list(pvalue=allP,correlations=allEst))
+}  
+
+IGF1correlatesC = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[2],cases]))
+hist(IGF1correlatesC$pvalue)
+truehist(IGF1correlatesC$pvalue)
+truehist(IGF1correlatesC$correlations)
+IGFgroup = names(IGF1correlatesC$pvalue)[intersect(which(IGF1correlatesC$pvalue < 0.05), which(abs(IGF1correlatesC$correlations) > 0.5))]
+IGFpos = names(IGF1correlatesC$pvalue)[intersect(which(IGF1correlatesC$pvalue < 0.05), which(IGF1correlatesC$correlations > 0.5))]
+IGFneg = names(IGF1correlatesC$pvalue)[intersect(which(IGF1correlatesC$pvalue < 0.05), which(IGF1correlatesC$correlations < -0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% IGFgroup]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "IGF1"])
+dispLab = rep("", length(IGFgroup))
+dispLab[tokeep] = "IGF1"
+heatmap.2(data.matrix(resid[rownames(resid) %in% IGFgroup,cases]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "IGF1 correlates",key = TRUE )
+
+
+# TWIST
+TWIST1correlatesC = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[4],cases]))
+hist(TWIST1correlatesC$pvalue)
+truehist(TWIST1correlatesC$pvalue)
+truehist(TWIST1correlatesC$correlations)
+TWISTgroup = names(TWIST1correlatesC$pvalue)[intersect(which(TWIST1correlatesC$pvalue < 0.05), which(abs(TWIST1correlatesC$correlations) > 0.5))]
+TWISTpos = names(TWIST1correlatesC$pvalue)[intersect(which(TWIST1correlatesC$pvalue < 0.05), which(TWIST1correlatesC$correlations > 0.5))]
+TWISTneg = names(TWIST1correlatesC$pvalue)[intersect(which(TWIST1correlatesC$pvalue < 0.05), which(TWIST1correlatesC$correlations < -0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% TWISTgroup]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "TWIST1"])
+dispLab = rep("", length(TWISTgroup))
+dispLab[tokeep] = "TWIST1"
+heatmap.2(data.matrix(resid[rownames(resid) %in% TWISTgroup,cases]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "TWIST1 correlates",key = TRUE )
+
+
+#RUNX2
+RUNX2correlatesC = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[3],cases]))
+hist(RUNX2correlatesC$pvalue)
+truehist(RUNX2correlatesC$pvalue)
+truehist(RUNX2correlatesC$correlations)
+RUNXgroup = names(RUNX2correlatesC$pvalue)[intersect(which(RUNX2correlatesC$pvalue < 0.05), which(abs(RUNX2correlatesC$correlations) > 0.5))]
+RUNXpos = names(RUNX2correlatesC$pvalue)[intersect(which(RUNX2correlatesC$pvalue < 0.05), which(RUNX2correlatesC$correlations > 0.5))]
+RUNXneg = names(RUNX2correlatesC$pvalue)[intersect(which(RUNX2correlatesC$pvalue < 0.05), which(RUNX2correlatesC$correlations < -0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% RUNXgroup]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "RUNX2"])
+dispLab = rep("", length(RUNXgroup))
+dispLab[tokeep] = "RUNX2"
+heatmap.2(data.matrix(resid[rownames(resid) %in% RUNXgroup,cases]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "RUNX2 correlates",key = TRUE )
+
+```
+
+
+
+# List the genes that correlate with each in CASES
+```{r}
+IGFgroupHGNC = getHGNC(inENSG = IGFgroup)
+# IGF1, positively correlated
+print(unique(IGFgroupHGNC$hgnc_symbol[match(IGFpos,IGFgroupHGNC$ensembl_gene_id)]))
+# IGF1, negatively correlated
+print(unique(IGFgroupHGNC$hgnc_symbol[match(IGFneg,IGFgroupHGNC$ensembl_gene_id)]))
+write.csv(unique(IGFgroupHGNC$hgnc_symbol[match(IGFpos,IGFgroupHGNC$ensembl_gene_id)]),file = "cases_IGF1_positive_corr.csv")
+write.csv(unique(IGFgroupHGNC$hgnc_symbol[match(IGFneg,IGFgroupHGNC$ensembl_gene_id)]),file = "cases_IGF1_negative_corr.csv")
+
+
+
+TWISTgroupHGNC = getHGNC(inENSG = TWISTgroup)
+print(unique(TWISTgroupHGNC$hgnc_symbol[match(TWISTpos,TWISTgroupHGNC$ensembl_gene_id)]))
+# TWIST1, negatively correlated
+print(unique(TWISTgroupHGNC$hgnc_symbol[match(TWISTneg,TWISTgroupHGNC$ensembl_gene_id)]))
+write.csv(unique(TWISTgroupHGNC$hgnc_symbol[match(TWISTpos,TWISTgroupHGNC$ensembl_gene_id)]),file = "cases_TWIST1_positive_corr.csv")
+write.csv(unique(TWISTgroupHGNC$hgnc_symbol[match(TWISTneg,TWISTgroupHGNC$ensembl_gene_id)]),file = "cases_TWIST1_negative_corr.csv")
+
+
+RUNXgroupHGNC = getHGNC(inENSG = RUNXgroup)
+print(unique(RUNXgroupHGNC$hgnc_symbol[match(RUNXpos,RUNXgroupHGNC$ensembl_gene_id)]))
+# RUNX2, negatively correlated
+print(unique(RUNXgroupHGNC$hgnc_symbol[match(RUNXneg,RUNXgroupHGNC$ensembl_gene_id)]))
+write.csvunique(RUNXgroupHGNC$hgnc_symbol[match(RUNXpos,RUNXgroupHGNC$ensembl_gene_id)]),file = "cases_RUNX2_positive_corr.csv")
+write.csv(unique(RUNXgroupHGNC$hgnc_symbol[match(RUNXneg,RUNXgroupHGNC$ensembl_gene_id)]),file = "cases_RUNX2_negative_corr.csv")
+
+
+venn.diagram(x = list("IGF1high"=IGFgroupHGNC$hgnc_symbol,"TWIST"=TWISTgroupHGNC$hgnc_symbol,"RUNX2"=RUNXgroupHGNC$hgnc_symbol),filename = "venn-3gene-analysis_CASES.tiff",fill = c("cornflowerblue", "green", "yellow"))
+
+print(intersect(intersect(IGFgroupHGNC$hgnc_symbol,TWISTgroupHGNC$hgnc_symbol),RUNXgroupHGNC$hgnc_symbol))
+```
+
+
+
+# Looking at genes that correlate with IGF1/TWIST1/RUNX2 separately in controls
+```{r}
+controls = which(metadataMatching$caseStatus == "control")
+testCorrelationWith=function(inGene,adjMethod="BH") {
+  results = apply(data.matrix(resid[highVar,controls]),MARGIN = 1,function(x){ cor.test(x,inGene,method = "pearson")} )
+  allP = p.adjust(p = sapply(results,function(x) x$p.value),method = adjMethod)
+  allEst = sapply(results,function(x) x$estimate)
+  return(list(pvalue=allP,correlations=allEst))
+}  
+
+IGF1correlatesL = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[2],controls]))
+hist(IGF1correlatesL$pvalue)
+truehist(IGF1correlatesL$pvalue)
+truehist(IGF1correlatesL$correlations)
+IGFgroupL = names(IGF1correlatesL$pvalue)[intersect(which(IGF1correlatesL$pvalue < 0.05), which(abs(IGF1correlatesL$correlations) > 0.5))]
+IGFposL = names(IGF1correlatesL$pvalue)[intersect(which(IGF1correlatesL$pvalue < 0.05), which(IGF1correlatesL$correlations > 0.5))]
+IGFnegL = names(IGF1correlatesL$pvalue)[intersect(which(IGF1correlatesL$pvalue < 0.05), which(IGF1correlatesL$correlations < -0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% IGFgroupL]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "IGF1"])
+dispLab = rep("", length(IGFgroupL))
+dispLab[tokeep] = "IGF1"
+heatmap.2(data.matrix(resid[rownames(resid) %in% IGFgroupL,controls]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "IGF1 correlates",key = TRUE )
+
+
+# TWIST
+TWIST1correlatesL = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[4],controls]))
+hist(TWIST1correlatesL$pvalue)
+truehist(TWIST1correlatesL$pvalue)
+truehist(TWIST1correlatesL$correlations)
+TWISTgroupL = names(TWIST1correlatesL$pvalue)[intersect(which(TWIST1correlatesL$pvalue < 0.05), which(abs(TWIST1correlatesL$correlations) > 0.5))]
+TWISTposL = names(TWIST1correlatesL$pvalue)[intersect(which(TWIST1correlatesL$pvalue < 0.05), which(TWIST1correlatesL$correlations > 0.5))]
+TWISTnegL = names(TWIST1correlatesL$pvalue)[intersect(which(TWIST1correlatesL$pvalue < 0.05), which(TWIST1correlatesL$correlations < -0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% TWISTgroupL]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "TWIST1"])
+dispLab = rep("", length(TWISTgroupL))
+dispLab[tokeep] = "TWIST1"
+heatmap.2(data.matrix(resid[rownames(resid) %in% TWISTgroupL,controls]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "TWIST1 correlates",key = TRUE )
+
+
+#RUNX2
+RUNX2correlatesL = testCorrelationWith(inGene = t(resid[rownames(resid) == geneNames$ensembl_gene_id[3],controls]))
+hist(RUNX2correlatesL$pvalue)
+truehist(RUNX2correlatesL$pvalue)
+truehist(RUNX2correlatesL$correlations)
+RUNXgroupL = names(RUNX2correlatesL$pvalue)[intersect(which(RUNX2correlatesL$pvalue < 0.05), which(abs(RUNX2correlatesL$correlations) > 0.5))]
+RUNXposL = names(RUNX2correlatesL$pvalue)[intersect(which(RUNX2correlatesL$pvalue < 0.05), which(RUNX2correlatesL$correlations > 0.5))]
+RUNXnegL = names(RUNX2correlatesL$pvalue)[intersect(which(RUNX2correlatesL$pvalue < 0.05), which(RUNX2correlatesL$correlations < -0.5))]
+
+
+labRows = rownames(resid)[rownames(resid) %in% RUNXgroupL]
+tokeep = which(labRows == geneNames$ensembl_gene_id[geneNames$hgnc_symbol == "RUNX2"])
+dispLab = rep("", length(RUNXgroupL))
+dispLab[tokeep] = "RUNX2"
+heatmap.2(data.matrix(resid[rownames(resid) %in% RUNXgroupL,controls]),trace = "none",scale = "none",col = bluered,labRow = dispLab,labCol = "",main = "RUNX2 correlates",key = TRUE )
+
+```
+
+
+
+# List the genes that correlate with each in CONTROLS
+```{r}
+IGFgroupHGNCL = getHGNC(inENSG = IGFgroupL)
+# IGF1, positively correlated
+print(unique(IGFgroupHGNCL$hgnc_symbol[match(IGFposL,IGFgroupHGNCL$ensembl_gene_id)]))
+# IGF1, negatively correlated
+print(unique(IGFgroupHGNCL$hgnc_symbol[match(IGFnegL,IGFgroupHGNCL$ensembl_gene_id)]))
+write.csv(unique(IGFgroupHGNCL$hgnc_symbol[match(IGFposL,IGFgroupHGNCL$ensembl_gene_id)]),file = "controls_IGF1_positive_corr.csv")
+write.csv(unique(IGFgroupHGNCL$hgnc_symbol[match(IGFnegL,IGFgroupHGNCL$ensembl_gene_id)]),file = "controls_IGF1_negative_corr.csv")
+
+
+
+TWISTgroupHGNCL = getHGNC(inENSG = TWISTgroupL)
+print(unique(TWISTgroupHGNCL$hgnc_symbol[match(TWISTposL,TWISTgroupHGNCL$ensembl_gene_id)]))
+# TWIST1, negatively correlated
+print(unique(TWISTgroupHGNCL$hgnc_symbol[match(TWISTnegL,TWISTgroupHGNCL$ensembl_gene_id)]))
+write.csv(unique(TWISTgroupHGNCL$hgnc_symbol[match(TWISTposL,TWISTgroupHGNCL$ensembl_gene_id)]),file = "controls_TWIST1_positive_corr.csv")
+write.csv(unique(TWISTgroupHGNCL$hgnc_symbol[match(TWISTnegL,TWISTgroupHGNCL$ensembl_gene_id)]),file = "controls_TWIST1_negative_corr.csv")
+
+
+RUNXgroupHGNCL = getHGNC(inENSG = RUNXgroupL)
+print(unique(RUNXgroupHGNCL$hgnc_symbol[match(RUNXposL,RUNXgroupHGNCL$ensembl_gene_id)]))
+# RUNX2, negatively correlated
+print(unique(RUNXgroupHGNCL$hgnc_symbol[match(RUNXnegL,RUNXgroupHGNCL$ensembl_gene_id)]))
+write.csv(unique(RUNXgroupHGNCL$hgnc_symbol[match(RUNXposL,RUNXgroupHGNCL$ensembl_gene_id)]),file = "controls_RUNX2_positive_corr.csv")
+write.csv(unique(RUNXgroupHGNCL$hgnc_symbol[match(RUNXnegL,RUNXgroupHGNCL$ensembl_gene_id)]),file = "controls_RUNX2_negative_corr.csv")
+
+
+venn.diagram(x = list("IGF1"=IGFgroupHGNC$hgnc_symbol,"TWIST"=TWISTgroupHGNCL$hgnc_symbol,"RUNX2"=RUNXgroupHGNC$hgnc_symbol),filename = "venn-3gene-analysis_controls.tiff",fill = c("cornflowerblue", "green", "yellow"))
+
+print(intersect(intersect(IGFgroupHGNC$hgnc_symbol,TWISTgroupHGNC$hgnc_symbol),RUNXgroupHGNC$hgnc_symbol))
+```
+
+
+
+# Compare results from cases and controls
+```{r}
+venn(list(cases=IGFgroupHGNC$hgnc_symbol, controls=IGFgroupHGNCL$hgnc_symbol))
+
+#IGF1 cases but not controls
+setdiff(IGFgroupHGNC$hgnc_symbol, IGFgroupHGNCL$hgnc_symbol)
+
+#IGF1 controls but not cases
+setdiff(IGFgroupHGNCL$hgnc_symbol, IGFgroupHGNC$hgnc_symbol)
+
+
+#TWIST1
+venn(list(cases=TWISTgroupHGNC$hgnc_symbol, controls=TWISTgroupHGNCL$hgnc_symbol))
+
+#TWIST1 cases but not controls
+setdiff(TWISTgroupHGNC$hgnc_symbol, TWISTgroupHGNCL$hgnc_symbol)
+
+#TWIST1 controls but not cases
+setdiff(TWISTgroupHGNCL$hgnc_symbol, TWISTgroupHGNC$hgnc_symbol)
+
+
+#RUNX2
+venn(list(cases=RUNXgroupHGNC$hgnc_symbol, controls=RUNXgroupHGNCL$hgnc_symbol))
+
+#RUNX1 cases but not controls
+setdiff(RUNXgroupHGNC$hgnc_symbol, RUNXgroupHGNCL$hgnc_symbol)
+
+#RUNX1 controls but not cases
+setdiff(RUNXgroupHGNCL$hgnc_symbol, RUNXgroupHGNC$hgnc_symbol)
+
+```
+
+
 # Classify patients into groups based on signal of correlates of IGF1, RUNX2, TWIST1?
 ### Would need to iteratively choose the cutoff for correlated genes to include.
 ### Show whether there is a distinct diagnostic group based on these genes, separate from controls.
 
 
 # Plot / ANOVA of differences in mean expression per diagnostic group 
-
