@@ -100,3 +100,8 @@ counts.rpkm = rpkm(shortCounts.dge,gene.length = as.numeric(as.vector(c(osteoTri
 
 heatmap.2(counts.rpkm,scale = NULL,col = bluered(9),trace = "none",RowSideColors = c(rep("white",nrow(osteoExp)),rep("orange", nrow(ofInterestExp))),labRow = "")
 boxplot(counts.rpkm, las = 2,use.cols = FALSE,col = c(rep("white",nrow(osteoExp)),rep("orange", nrow(ofInterestExp))),names = c(as.character(osteoTrimmed$geneNames), as.character(ofInterest$geneNames)),cex.axis = 0.8, ylab = "RPKM")
+
+head(counts.rpkm)
+rpkm.meds = apply(counts.rpkm,MARGIN = 1,function(x){median(x,na.rm = TRUE)})
+names(rpkm.meds) = c(as.character(osteoTrimmed$geneNames), as.character(ofInterest$geneNames))
+write.csv(rpkm.meds,file = "osteo_gene_medians.csv",quote = FALSE,row.names = TRUE)

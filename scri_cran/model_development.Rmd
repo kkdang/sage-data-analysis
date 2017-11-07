@@ -9,19 +9,24 @@ output:
 ---
 
 ```{r message=FALSE,warning=FALSE}
-library('rGithubClient')
-source('~/Computing/sage-data-analysis/voom_fit.R')
-sageCode = getRepo(repository="kkdang/sage-data-analysis")
-sourceRepoFile(sageCode, "scri_cran/cranio_common_routines.R")
-setwd('/Users/kristen/Computing/cranio/')
+library('githubr')
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
+sourceRepoFile(sageCode, 'scri_cran/cranio_common_routines.R')
+rm(metadata)
+#source('~/Computing/sage-data-analysis/voom_fit.R')
+sourceRepoFile(sageCode, 'biomart_fxns.R')
+setwd('~/Computing/cranio/')
+```
+
+```{r}
 cutoff = 0.05
 proteinCoding_genes = getByBiotype(biotype = 'protein_coding',gene = TRUE)
 ```
 
-Filter and convert metadata
+Get the metadata
 ```{r}
-sourceRepoFile(sageCode, "scri_cran/process_metadata.R")
-metadataFiltered = processMetadata(ver = 5,plot = FALSE)
+sourceRepoFile(sageCode, "scri_cran/process_metadata_validation.R")
+metadataFiltered = processMetadataVal(plot = FALSE)
 ```
 
 
@@ -45,49 +50,56 @@ voomResiduals=function(in.dge,in.design,plot=TRUE){
 
 Make starting dataset and remove outliers
 ```{r}
-data.dge = generateDataObj('syn2820309')
+dataEnt = read.delim(getFileLocation(synGet('syn7477102')), row.names = 1, header = TRUE)
+lookupTable = synTableQuery('SELECT * FROM syn7477113')
+head(lookupTable@values)
 
-outlierTable = synTableQuery('SELECT * FROM syn3354503')
-outlierData = outlierTable@values
-noOutliers.dge = data.dge[,-which(colnames(data.dge) %in% outlierData$minimalSet)]
+newNames = lookupTable@values$Investigator_Sample_Name[match(colnames(dataEnt), paste("X",lookupTable@values$Sample_Name, sep = ""))]
+colnames(dataEnt) = newNames
+
+data.dge = DGEList(counts=dataEnt,remove.zeros=TRUE)
+palx20.dge = filterByFractionPresent(data.dge,fraction = 0.20)
 
 ## Remove samples that don't have seq data.
 ## Order the data in the same way for counts and metadata
-metadataMatching = metadataFiltered[-which(!metadataFiltered$Px_Code %in% colnames(noOutliers.dge)),]
-metadataMatching = metadataMatching[match(colnames(noOutliers.dge), metadataMatching$Px_Code),]
-head(metadataMatching$Px_Code)
-head(colnames(noOutliers.dge))
+toRemove = setdiff(rownames(metadataFiltered), colnames(palx20.dge))
+metadataMatching = metadataFiltered[-which(rownames(metadataFiltered) %in% toRemove),-2]
+metadataMatching = metadataMatching[match(colnames(palx20.dge), rownames(metadataMatching)),]
+head(rownames(metadataMatching))
+head(colnames(palx20.dge))
+tail(rownames(metadataMatching))
+tail(colnames(palx20.dge))
 
 ## Protein-coding genes, PALX=20%
-b = as.list(rownames(noOutliers.dge))
-strippedNames = sapply(b,function(x){unlist(strsplit(as.character(x), split = "[.]"))[1]})  
-pc.dge = noOutliers.dge[which(strippedNames %in% proteinCoding_genes[,1]),]
-pc_palo.dge = DGEList(counts = getCounts(pc.dge),group = pc.dge$samples$group)
-pc_palx20.dge = filterByFractionPresent(pc_palo.dge,fraction=0.20,minCount=3)
-pc_palx20.dge = calcNormFactors(pc_palx20.dge)
-z = voom_fit(pc_palx20.dge)
-pc_palx.pca = prcomp_PCA(in.voom = voom_on_mean(pc_palx20.dge))
+pc.dge = palx20.dge[which(rownames(palx20.dge) %in% proteinCoding_genes[,1]),]
+pc_palx20.dge = calcNormFactors(pc.dge)
+pc_palx.pca = prcomp_PCA(in.data = voom_on_mean(pc_palx20.dge))
+```
 
 
-metaCategorical = c("Sex", "Sample_Type", "Initial_date_set_up", "Initial_date_freeze", "for_RNA_date_set_up", "for_RNA_date_plated", "for_RNA_date_harvest", "ScanDate", "Sample_Origin", "caseStatus", "SAMPLE","libraryBatch" )
+
+```{r}
+metaCategorical = c("Sex", "Diagnosis", "Batch", "Plate")
 corrsToPlot = list()
-technical = c("Initial_date_set_up", "Initial_date_freeze", "for_RNA_date_set_up", "for_RNA_date_plated", "for_RNA_date_harvest", "ScanDate", "Sample_Origin", "SAMPLE", "libraryBatch","Days_in_LN2")
-phenotypic = c("Sex","BrdU","AlkP","RNA_days_to_harvest","Initial_growth_duration_days","Age_mos.", "Sample_Type","caseStatus")
-alignment = setdiff(colnames(metadataMatching),c(technical, phenotypic))[-1]
+technical = c("Batch", "Plate")
+phenotypic = c("Sex","RNA_Days_to_Harvest","Diagnosis")
+#alignment = setdiff(colnames(metadataMatching),c(technical, phenotypic))[-1]
 
 processPlotting=function(inPCA,inModelName){
-  base.corr = calc_plot_PC_corr(in.pca = inPCA$x,inClinical=metadataMatching[,c(2:ncol(metadataMatching))],categorical=which(colnames(metadataMatching)%in%metaCategorical)-1)
+  base.corr = calc_plot_PC_corr(in.pca = inPCA$x,inClinical=metadataMatching,categorical=which(colnames(metadataMatching)%in%metaCategorical),k = 8,secondPlot = FALSE)
   
   technicalInd = which(colnames(base.corr) %in% technical)
   phenotypicInd = which(colnames(base.corr) %in% phenotypic)
-  alignmentInd = which(colnames(base.corr) %in% alignment)
+#  alignmentInd = which(colnames(base.corr) %in% alignment)
   technicalCorrVals = as.vector(na.omit(as.vector(base.corr[1,technicalInd])))
   phenotypicCorrVals = as.vector(na.omit(as.vector(base.corr[1,phenotypicInd])))
-  alignmentCorrVals = as.vector(na.omit(as.vector(base.corr[1,alignmentInd])))
+#  alignmentCorrVals = as.vector(na.omit(as.vector(base.corr[1,alignmentInd])))
   total = length(which(!is.na(base.corr)))
   
-  type = c(rep('alignment',times = length(alignmentCorrVals)),rep('phenotypic',times = length(phenotypicCorrVals)),rep('technical',times = length(technicalCorrVals)))
-  corrVals = data.frame(pvals=c(alignmentCorrVals,phenotypicCorrVals,technicalCorrVals),type)
+#  type = c(rep('alignment',times = length(alignmentCorrVals)),rep('phenotypic',times = length(phenotypicCorrVals)),rep('technical',times = length(technicalCorrVals)))
+  type = c(rep('phenotypic',times = length(phenotypicCorrVals)),rep('technical',times = length(technicalCorrVals)))
+#  corrVals = data.frame(pvals=c(alignmentCorrVals,phenotypicCorrVals,technicalCorrVals),type)
+  corrVals = data.frame(pvals=c(phenotypicCorrVals,technicalCorrVals),type)
   return = list(model=inModelName,corrs=corrVals,countSig=total)
 }
 
@@ -96,89 +108,37 @@ boxplot(-log10(corrsToPlot[[1]]$corrs$pvals)~corrsToPlot[[1]]$corrs$type,ylab = 
 ```
 
 
-
-PC1
-```{r}
-# Median CV coverage
-testDesign = model.matrix(~MEDIAN_CV_COVERAGE,data = metadataMatching)
-
-pc1.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[2]] = processPlotting(inPCA = pc1.pca,inModelName = 'MedCVCov')
-#calc_plot_PC_corr(in.pca = pc1.pca$x,inClinical=metadataMatching[,c(2:ncol(metadataMatching))],categorical=which(colnames(metadataMatching)%in%metaCategorical)-1)
-boxplot(-log10(corrsToPlot[[2]]$corrs$pvals)~corrsToPlot[[2]]$corrs$type,ylab = "-log10(pval)")
-
-
-# PCT Intronic
-testDesign = model.matrix(~PCT_INTRONIC_BASES,data = metadataMatching)
-
-pc1.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[3]] = processPlotting(inPCA = pc1.pca,inModelName = 'PctIntronic')
-
-
-# RNA_days_to_harvest
-testDesign = model.matrix(~RNA_days_to_harvest,data = metadataMatching)
-
-pc1.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[4]] = processPlotting(inPCA = pc1.pca,inModelName = 'RNAdaysToHarvest')
-
-
-# PCT Correct Strand
-testDesign = model.matrix(~PCT_CORRECT_STRAND_READS,data = metadataMatching)
-
-pc1.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[5]] = processPlotting(inPCA = pc1.pca,inModelName = 'PctCorStrnd')
-
-```
-
-
 PC2
 ```{r}
-# PCT_CORRECT_STRAND_READS + RNAdTH
-testDesign = model.matrix(~RNA_days_to_harvest+PCT_CORRECT_STRAND_READS,data = metadataMatching)
+# Plate
+testDesign = model.matrix(~Plate,data = metadataMatching)
 
-pc2.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[6]] = processPlotting(inPCA = pc2.pca,inModelName = 'PctCorStrd+RNAdTH')
-
-# PCT_CORRECT_STRAND_READS + Median CV
-testDesign = model.matrix(~MEDIAN_CV_COVERAGE+PCT_CORRECT_STRAND_READS,data = metadataMatching)
-
-pc2.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[7]] = processPlotting(inPCA = pc2.pca,inModelName = 'PctCorStrd+MedCV')
-
-
-# PCT_CORRECT_STRAND_READS + PCT INTRONIC
-testDesign = model.matrix(~PCT_INTRONIC_BASES+PCT_CORRECT_STRAND_READS,data = metadataMatching)
-
-pc2.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[8]] = processPlotting(inPCA = pc2.pca,inModelName = 'PctCorStrd+PctInt')
+pc2.pca = prcomp_PCA(in.data = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
+corrsToPlot[[2]] = processPlotting(inPCA = pc2.pca,inModelName = 'Plate')
 
 ```
 
-Final model
+
+Model selection by AIC and BIC
 ```{r}
-# FULL MODEL
-testDesign = model.matrix(~PCT_CORRECT_STRAND_READS+Age_mos.+Sex+PCT_INTRONIC_BASES,data = metadataMatching)
-pcfull.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[9]] = processPlotting(inPCA = pcfull.pca,inModelName = 'full')
+makeModels=function(){
+  
+  Plate = model.matrix(~Plate,data = metadataMatching)
+  Batch = model.matrix(~Batch,data = metadataMatching)
+  Sex = model.matrix(~Sex,data = metadataMatching)
+  Diagnosis = model.matrix(~Diagnosis,data = metadataMatching)
 
-# With LN2
-testDesign = model.matrix(~Days_in_LN2+PCT_CORRECT_STRAND_READS+Age_mos.+Sex+PCT_INTRONIC_BASES,data = metadataMatching)
-pcfull.pca = prcomp_PCA(in.voom = voomResiduals(in.dge = pc_palx20.dge,in.design = testDesign))
-corrsToPlot[[10]] = processPlotting(inPCA = pcfull.pca,inModelName = 'full+LN2')
-
-```
-
-Plot all together
-```{r fig.height=8,fig.width=13}
-op = par(mfrow = c(1,10))
-numSig = 0
-for (i in 1:length(corrsToPlot)) {
-  numSig[i] = corrsToPlot[[i]]$countSig
-  names(numSig)[i] = corrsToPlot[[i]]$model
-  boxplot(-log10(corrsToPlot[[i]]$corrs$pvals)~corrsToPlot[[i]]$corrs$type,ylab = "-log10(pval)",axes = TRUE,main = corrsToPlot[[i]]$model,ylim = range(0,30),las = 2, col = "gold")
+  designlist = list(Plate=Plate,Batch=Batch,Sex=Sex,Diagnosis=Diagnosis)
+  return(designlist)
 }
-par(op)
-op = par(mar = c(5,12,4,2))
-barplot(numSig,las = 2,horiz = TRUE,main = "Number of significant correlations across all PCs")
-par(op)
+
+
+allModels=makeModels()
+
+chooseModel = selectModel(voom(palx20.dge),allModels,criterion = "bic")
+x = table(chooseModel$pref)
+chooseModel = selectModel(voom(palx20.dge),allModels,criterion = "aic")
+votes = rbind(x,table(chooseModel$pref))
+barplot(votes,beside=TRUE, ylab = "# of genes choosing this model",legend.text = c("BIC", "AIC"),main="model selection", cex.names = 0.7, las = 2)
 ```
+

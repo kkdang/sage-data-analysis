@@ -10,7 +10,6 @@ output:
 ```{r message=FALSE,warning=FALSE}
 library(synapseClient)
 synapseLogin()
-library("VennDiagram")
 library('gplots')
 library('RColorBrewer')
 library('githubr')
@@ -37,18 +36,6 @@ sourceRepoFile(sageCode, 'scri_cran/make_residualized_dataset.R')
 #proteinCoding_genes = getByBiotype()
 ```
 
-
-
-Same model as above, but also controlling for sex
-```{r}
-## Run model and get residuals
-minimalSetPlusSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days", "Sex")
-tempModel = model.matrix(as.formula(paste("~",paste(minimalSetPlusSex,collapse = "+"),sep = "")), data = metadataMatching)
-data.voom = voom(palx20.dge,tempModel,plot=FALSE) 
-fit = lmFit(data.voom,tempModel)
-resid = residuals(fit,y = data.voom)
-
-```
 
 Functions
 ```{r}
@@ -128,8 +115,10 @@ topThyShort = topThy[which(topThy %in% rownames(residOrdered))]
 length(topThyShort)
 topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThyShort, geneNames$Ensembl.Gene.ID)])
 
-heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "all Thyroid genes correlated with IGF1\nall samples", xlab = "ordered by IGF1 expression")
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "all Thyroid genes \nall samples", xlab = "ordered by IGF1 expression")
 
+# clustered
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow = "",labCol = "",trace='n',col=bluered,scale='r',ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],main = "all Thyroid genes \nall samples")
 
 
 ```
@@ -186,6 +175,125 @@ setdiff(topThyCC,topThyCases)
 ```
 
 
+Plot of high/low IGF1 samples vs controls for all thyroid genes
+```{r}
+highIGF1 = names(IGF1residCases)[which(IGF1residCases > 2.83)]
+lowIGF1 = names(IGF1residCases)[which(IGF1residCases < -3.4)]
+randomControls = as.character(metadataMatching$Px_Code[sample(which(metadataMatching$caseStatus == "control"),size = 20,replace = FALSE)])
+
+length(lowIGF1)
+length(highIGF1)
+
+topThy = na.omit(as.character(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]))
+topThy = topThy[order(topThy)]
+residOrdered = resid[which(rownames(resid) %in% topThy),which(colnames(resid) %in% c(highIGF1,lowIGF1,randomControls))]
+topThyShort = topThy[which(topThy %in% rownames(residOrdered))]
+length(topThyShort)
+residOrdered = residOrdered[match(topThyShort,rownames(residOrdered)),match(c(lowIGF1,randomControls,highIGF1),colnames(residOrdered))]
+head(residOrdered)
+dim(residOrdered)
+colnames(residOrdered)
+lowIGF1
+highIGF1
+rownames(residOrdered)
+topThyShort
+topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThyShort, geneNames$Ensembl.Gene.ID)])
+
+residOrdered = residOrdered[-which(topThyHGNC == "ZFAT"),]
+topThyHGNC = topThyHGNC[-which(topThyHGNC == "ZFAT")]
+
+
+heatmap.2(residOrdered,labRow=topThyHGNC,trace='n',Rowv=TRUE,col=colorpanel(30,low = "darkblue",mid = "white",high = "red4"),scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "row",main = "all Thyroid genes \nextreme IGF1 samples", xlab = "ordered by IGF1 expression")
+
+heatmap.2(residOrdered,labRow=topThyHGNC,trace='n',Rowv=TRUE,col=greenred,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "row",main = "all Thyroid genes \nextreme IGF1 samples", xlab = "ordered by IGF1 expression")
+
+```
+
+
+
+
+
+Same model as above, but also controlling for sex
+```{r}
+## Run model and get residuals
+minimalSetPlusSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days", "Sex")
+tempModel = model.matrix(as.formula(paste("~",paste(minimalSetPlusSex,collapse = "+"),sep = "")), data = metadataMatching)
+data.voom = voom(palx20.dge,tempModel,plot=FALSE) 
+fit = lmFit(data.voom,tempModel)
+resid = residuals(fit,y = data.voom)
+
+
+# Gene genes significantly correlated with IGF1
+IGF1resid = resid[which(rownames(resid) == IGF1ensg),]
+
+# What are the correlation estimates
+IGF1cor = apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1resid)$estimate})
+hist(IGF1cor)
+#x = apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1resid)$p.value})
+IGF1sig = p.adjust(apply(resid,MARGIN = 1,function(z){cor.test(z,IGF1resid)$p.value}),method = "fdr")
+hist(IGF1sig)
+
+
+# How many are significant?
+length(which(IGF1sig < 0.01))
+topHits = intersect(which(IGF1sig < 0.01), which(abs(IGF1cor) > 0.5))
+length(topHits)
+
+# Enrichment in Thyroid pathway?
+thyFisher = phenoEnrich(queryGeneSet =  rownames(resid)[topHits],universeGeneSet = rownames(resid),queryAgainstGeneSet = unique(na.omit(CunninghamGL$V6[which(CunninghamGL$Thyroid == "YES")])))
+
+
+
+#Heatmaps 
+
+### ordered by IGF1
+IGF1residOrdered = IGF1resid[order(IGF1resid)]
+topThy = intersect(na.omit(c(as.character(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]),IGF1ensg)),rownames(resid)[topHits])
+topThy = topThy[order(topThy)]
+residOrdered = resid[which(rownames(resid) %in% topThy),match(names(IGF1residOrdered),colnames(resid))]
+residOrdered = residOrdered[order(rownames(residOrdered)),]
+head(residOrdered)
+topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThy, geneNames$Ensembl.Gene.ID)])
+
+heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "top Thyroid genes correlated with IGF1\nall samples", xlab = "ordered by IGF1 expression")
+
+
+#Plot of high/low IGF1 samples vs controls for all thyroid genes
+highIGF1 = names(IGF1residCases)[which(IGF1residCases > 2.83)]
+lowIGF1 = names(IGF1residCases)[which(IGF1residCases < -3.4)]
+randomControls = as.character(metadataMatching$Px_Code[sample(which(metadataMatching$caseStatus == "control"),size = 20,replace = FALSE)])
+
+length(lowIGF1)
+length(highIGF1)
+
+topThy = na.omit(as.character(CunninghamGL$V6[CunninghamGL$Thyroid == "YES"]))
+topThy = topThy[order(topThy)]
+residOrdered = resid[which(rownames(resid) %in% topThy),which(colnames(resid) %in% c(highIGF1,lowIGF1,randomControls))]
+topThyShort = topThy[which(topThy %in% rownames(residOrdered))]
+length(topThyShort)
+residOrdered = residOrdered[match(topThyShort,rownames(residOrdered)),match(c(lowIGF1,randomControls,highIGF1),colnames(residOrdered))]
+head(residOrdered)
+dim(residOrdered)
+colnames(residOrdered)
+lowIGF1
+highIGF1
+rownames(residOrdered)
+topThyShort
+topThyHGNC = as.character(geneNames$HGNC.symbol[match(topThyShort, geneNames$Ensembl.Gene.ID)])
+
+
+
+heatmap.2(residOrdered,labRow=topThyHGNC,trace='n',Rowv=TRUE,col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "row",main = "all Thyroid genes \nextreme IGF1 samples", xlab = "ordered by IGF1 expression")
+
+heatmap.2(residOrdered,labRow=topThyHGNC,trace='n',Rowv=TRUE,col=greenred,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "row",main = "all Thyroid genes \nextreme IGF1 samples", xlab = "ordered by IGF1 expression")
+
+```
+
+
+
+
+
+
 Look at transcript level data
 ```{r}
 transcriptNames = read.delim("~/Downloads/ENSGv87_geneHGNC_transcripts.txt", header = TRUE)
@@ -195,8 +303,7 @@ IGF1trans = as.character(transcriptNames$Ensembl.Transcript.ID[transcriptNames$E
 
 
 # Get transcript data and model
-#sourceRepoFile(sageCode, 'scri_cran/make_residualized_case_dataset_transcripts.R')
-# or source local file
+sourceRepoFile(sageCode, 'scri_cran/make_residualized_case_dataset_transcripts.R')
 head(resid)
 dim(resid)
 IGF1transDom = intersect(rownames(resid), IGF1trans)
@@ -244,6 +351,7 @@ topThyHGNC = as.character(transcriptNames$HGNC.symbol[match(topThyENSG,transcrip
 
 heatmap.2(residOrdered[which(rownames(residOrdered) %in% topThy),],labRow=topThyHGNC,trace='n',col=bluered,scale='r',Colv=NULL,ColSideColors=plotCols[as.numeric(metadataMatching$caseStatus[match(colnames(residOrdered),metadataMatching$Px_Code)])],dendrogram = "none",main = "top Thyroid transcripts corr with IGF1\nall samples", xlab = "ordered by IGF1 expression")
 
-topThyCC = topThy
 
 ```
+
+

@@ -4,8 +4,8 @@
 
 
 library(synapseClient)
-library('rGithubClient')
-source('/Users/kristen/Computing/external_software/rgithubclient_authenticate.R')
+library('githubr')
+source('/Users/kkdang/Computing/rgithubclient_authenticate.R')
 setwd('~/Computing/cranio/')
 synapseLogin()
 
@@ -45,6 +45,7 @@ formatted.output = output.file
 formatted.output$Age_mos. = formatC(output.file$Age_mos., digits=6, format="fg")
 formatted.output$Initial_growth_duration_days = formatC(output.file$Initial_growth_duration_days, digits=6, format="fg")
 formatted.output$Age_mos. = formatC(output.file$Age_mos., digits=6, format="fg")
+head(formatted.output)
 write.table(formatted.output, file = "metaDiff_caseControl_input.tsv", quote = FALSE, sep = "\t", col.names = TRUE, row.names = FALSE)
 
 toRemoveNA = grep(pattern = 'NA', x = formatted.output$File_Name)

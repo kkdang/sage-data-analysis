@@ -34,6 +34,9 @@ cSamps = as.data.frame(cbind(metadataFiltered$SAMPLE[controls], rep(x = "control
 colnames(cSamps) = c("SAMPLE", "PIEZOgroup")
 allSamples = rbind(groups, cSamps)
 
+# Get module genes from Ben and Thanneer's analysis
+moduleGenes = read.delim(getFileLocation(synGet("syn5923906")))
+
 
 #Get dataset, protein-coding genes, PALX=20%, with minimal model
 sourceRepoFile(sageCode, 'scri_cran/make_residualized_dataset.R')
@@ -100,6 +103,41 @@ results_ccFull = computeFit(in.dge = piezoDataFiltered.dge,design = ccModel)
 de_all = rownames(results_ccFull)[which(results_ccFull$adj.P.Val<cutoff)]
 
 
+# Test against select module genes
+greenGenes = as.character(moduleGenes$EnsembleID[moduleGenes$moduleLabel == "green"])
+piezoDataFiltered2.dge = piezoDataFiltered.dge[rownames(piezoDataFiltered.dge) %in% greenGenes,]
+dim(piezoDataFiltered2.dge)
+
+head(colnames(piezoDataFiltered2.dge))
+head(PiezoMeta$Px_Code)
+
+modelName = "case-control + full - green"
+minimalSet = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
+ccModel = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = PiezoMeta)
+rownames(ccModel) = colnames(piezoDataFiltered2.dge)
+my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
+results_ccFullgreen = computeFit(in.dge = piezoDataFiltered2.dge,design = ccModel)
+de_all = rownames(results_ccFullgreen)[which(results_ccFullgreen$adj.P.Val<cutoff)]
+results_ccFullgreen[which(results_ccFullgreen$adj.P.Val<cutoff),]
+
+
+blueGenes = as.character(moduleGenes$EnsembleID[moduleGenes$moduleLabel == "blue"])
+piezoDataFiltered2.dge = piezoDataFiltered.dge[rownames(piezoDataFiltered.dge) %in% blueGenes,]
+dim(piezoDataFiltered2.dge)
+
+head(colnames(piezoDataFiltered2.dge))
+head(PiezoMeta$Px_Code)
+
+modelName = "case-control + full - blue"
+minimalSet = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
+ccModel = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = PiezoMeta)
+rownames(ccModel) = colnames(piezoDataFiltered2.dge)
+my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
+results_ccFullblue = computeFit(in.dge = piezoDataFiltered2.dge,design = ccModel)
+de_all = rownames(results_ccFullblue)[which(results_ccFullblue$adj.P.Val<cutoff)]
+results_ccFullblue[which(results_ccFullblue$adj.P.Val<cutoff),]
+
+
 
 # Groups 1-2 v control
 dim(PiezoMeta)
@@ -128,6 +166,25 @@ rownames(ccModel) = colnames(piezoDataFiltered.dge)
 my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
 results_ccG12 = computeFit(in.dge = piezoDataFiltered.dge,design = ccModel)
 de_allG12 = rownames(results_ccG12)[which(results_ccG12$adj.P.Val<cutoff)]
+
+
+# Test against select module genes
+piezoDataFiltered2.dge = piezoDataFiltered.dge[rownames(piezoDataFiltered.dge) %in% greenGenes,]
+dim(piezoDataFiltered2.dge)
+head(colnames(piezoDataFiltered2.dge))
+head(g12PiezoMeta$Px_Code)
+
+modelName = "case-control Piezo groups 1 & 2 - green"
+minimalSet = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
+ccModel = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = g12PiezoMeta)
+rownames(ccModel) = colnames(piezoDataFiltered2.dge)
+my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
+results_ccG12green = computeFit(in.dge = piezoDataFiltered2.dge,design = ccModel)
+de_allG12green = rownames(results_ccG12green)[which(results_ccG12green$adj.P.Val<cutoff)]
+results_ccG12green[which(results_ccG12green$adj.P.Val<cutoff),]
+
+
+
 
 
 
@@ -164,6 +221,25 @@ results_ccG1 = computeFit(in.dge = piezoDataFiltered.dge,design = ccModel)
 
 
 
+# Test against select module genes
+piezoDataFiltered2.dge = piezoDataFiltered.dge[rownames(piezoDataFiltered.dge) %in% greenGenes,]
+dim(piezoDataFiltered2.dge)
+head(colnames(piezoDataFiltered2.dge))
+head(g1PiezoMeta$Px_Code)
+
+modelName = "case-control Piezo group 1 - green"
+minimalSet = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
+ccModel = model.matrix(as.formula(paste("~0+caseStatus",paste(minimalSet,collapse = "+"),sep = "+")), data = g1PiezoMeta)
+rownames(ccModel) = colnames(piezoDataFiltered2.dge)
+my.contrasts = makeContrasts(caseVScontrol = caseStatuscase-caseStatuscontrol, levels=ccModel)  
+results_ccG1abgreen = computeFit(in.dge = piezoDataFiltered2.dge,design = ccModel)
+de_allG1abgreen = rownames(results_ccG1abgreen)[which(results_ccG1abgreen$adj.P.Val<cutoff)]
+results_ccG1abgreen[which(results_ccG1abgreen$adj.P.Val<cutoff),]
+
+
+
+
+
 
 # Group 1a v 1b
 dim(PiezoMeta)
@@ -193,87 +269,36 @@ my.contrasts = makeContrasts(aVSb = PIEZOgroup1b-PIEZOgroup1a, levels=ccModel)
 results_ccG1ab = computeFit(in.dge = piezoDataFiltered.dge,design = ccModel)
 
 
+# Test against select module genes
+piezoDataFiltered2.dge = piezoDataFiltered.dge[rownames(piezoDataFiltered.dge) %in% greenGenes,]
+dim(piezoDataFiltered2.dge)
+head(colnames(piezoDataFiltered2.dge))
+head(g1PiezoMeta$Px_Code)
+
+modelName = "case-control Piezo group 1a v 1b - green"
+minimalSet = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
+ccModel = model.matrix(as.formula(paste("~0+PIEZOgroup",paste(minimalSet,collapse = "+"),sep = "+")), data = g1PiezoMeta)
+rownames(ccModel) = colnames(piezoDataFiltered2.dge)
+my.contrasts = makeContrasts(aVSb = PIEZOgroup1b-PIEZOgroup1a, levels=ccModel)  
+results_ccG1abgreen = computeFit(in.dge = piezoDataFiltered2.dge,design = ccModel)
 
 
 
+# Profile expression of biogrid interacting genes
+biogrid = c("ENSG00000125868", "ENSG00000140263", "ENSG00000168785", "ENSG00000165474", "ENSG00000108774", "ENSG00000075785", "ENSG00000101558", "ENSG00000111711")
 
+piezoData.dge = pc_palx50.dge[,colnames(pc_palx50.dge) %in% PiezoMeta$Px_Code]
+dim(piezoData.dge)
+PiezoMeta = PiezoMeta[match(PiezoMeta$Px_Code, colnames(piezoData.dge)),]
 
+interact.dge = piezoData.dge[rownames(piezoData.dge) %in% biogrid,]
+dim(interact.dge)
+boxplot(t(cpm(interact.dge,normalized.lib.sizes = TRUE,log = TRUE)), las = 2)
+dotchart(t(cpm(interact.dge,normalized.lib.sizes = TRUE,log = TRUE)), las = 2,labels = "")
 
-# Using a model that also controls for sex
-sourceRepoFile(sageCode, 'scri_cran/make_residualized_dataset.R')
-
-msSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days", "Sex")
-tempModel = model.matrix(as.formula(paste("~",paste(msSex,collapse = "+"),sep = "")), data = metadataMatching)
-data.voom = voom(palx20.dge,tempModel,plot=FALSE) 
-fit = lmFit(data.voom,tempModel)
-altData = residuals(fit,y = data.voom)
-
-piezoData  = cbind(altData[which(rownames(altData ) == "ENSG00000103335"),], gsub(pattern = "X",replacement = "",x = colnames(altData)))
-colnames(piezoData) = c("ENSG00000103335", "Px_Code")
-piezoData = as.data.frame(piezoData)
-piezoData$ENSG00000103335 = as.numeric(as.character(piezoData$ENSG00000103335))
-head(piezoData)
-head(PiezoMeta)
-PiezoMerged = merge(PiezoMeta, piezoData, by.x = "Px_Code", by.y = "Px_Code", all.x = TRUE, all.y = FALSE)
-head(PiezoMerged)
-beeswarm(PiezoMerged$ENSG00000103335~PiezoMerged$PIEZOgroup, ylab = "Piezo1 residualized exp")
-
-
-
-# Original model, but including outlier sample 2088 (aka 95689)
-outlierData = outlierTable@values
-redOutliers = outlierData[-which(outlierData$minimalSet == "2088"),]
-noOutliers.dge = data.dge[,-which(colnames(data.dge) %in% redOutliers$minimalSet)]
-
-metadataMatching = metadataFiltered[-which(!metadataFiltered$Px_Code %in% colnames(noOutliers.dge)),]
-metadataMatching = metadataMatching[match(colnames(noOutliers.dge), metadataMatching$Px_Code),]
-head(metadataMatching$Px_Code)
-head(colnames(noOutliers.dge))
-dim(noOutliers.dge)
-
-palx20.dge = filterByFractionPresent(noOutliers.dge,fraction=0.1,minCount=2)
-dim(palx20.dge)
-palx20.dge = calcNormFactors(palx20.dge)
-
-minimalSetNoSex = c("Age_mos.","PCT_CORRECT_STRAND_READS","PCT_INTRONIC_BASES", "Initial_growth_duration_days")
-tempModel = model.matrix(as.formula(paste("~",paste(minimalSetNoSex,collapse = "+"),sep = "")), data = metadataMatching)
-data.voom = voom(palx20.dge,tempModel,plot=FALSE) 
-fit = lmFit(data.voom,tempModel)
-outData = residuals(fit,y = data.voom)
-
-piezoData  = cbind(outData[which(rownames(outData) == "ENSG00000103335"),], gsub(pattern = "X",replacement = "",x = colnames(outData)))
-colnames(piezoData) = c("ENSG00000103335", "Px_Code")
-piezoData = as.data.frame(piezoData)
-piezoData$ENSG00000103335 = as.numeric(as.character(piezoData$ENSG00000103335))
-head(piezoData)
-
-shortMeta = metadataFiltered[-which(is.na(metadataFiltered$SAMPLE)),]
-
-PiezoMeta = merge(shortMeta, allSamples, by.x = "SAMPLE", by.y = "SAMPLE", all.x = FALSE, all.y = FALSE)
-head(PiezoMeta)
-duplicated(PiezoMeta$SAMPLE)
-duplicated(PiezoMeta$Px_Code)
-
-PiezoMerged = merge(PiezoMeta, piezoData, by.x = "Px_Code", by.y = "Px_Code", all.x = FALSE, all.y = FALSE)
-head(PiezoMerged)
-duplicated(PiezoMerged$SAMPLE)
-duplicated(PiezoMerged$Px_Code)
-beeswarm(PiezoMerged$ENSG00000103335~PiezoMerged$PIEZOgroup, ylab = "Piezo1 residualized exp")
-
-
-# group 1 vs control
-short = PiezoMerged[-which(PiezoMerged$PIEZOgroup %in% c("2","3")),]
-beeswarm(short$ENSG00000103335~short$caseStatus, ylab = "Piezo1 residualized exp", main = "group 1")
-t.test(short$ENSG00000103335~short$caseStatus, ylab = "Piezo1 residualized exp")
-
-# groups 1 & 2 vs control
-short = PiezoMerged[-which(PiezoMerged$PIEZOgroup == "3"),]
-beeswarm(short$ENSG00000103335~short$caseStatus, ylab = "Piezo1 residualized exp", main = "groups 1 & 2")
-t.test(short$ENSG00000103335~short$caseStatus, ylab = "Piezo1 residualized exp")
-
-
-# all Piezo1 variants vs control
-boxplot(PiezoMerged$ENSG00000103335~PiezoMerged$caseStatus, main = "all groups")
-t.test(PiezoMerged$ENSG00000103335~PiezoMerged$caseStatus)
-
-
+allPiezo1 =  as.character(PiezoMeta$Px_Code[PiezoMeta$PIEZOgroup %in% c("1a", "1b", "2", "3")])
+piez_interact.dge = interact.dge[,colnames(interact.dge) %in% allPiezo1]
+cntl_interact.dge = interact.dge[,!colnames(interact.dge) %in% allPiezo1]
+dim(cntl_interact.dge)
+dotchart(t(cpm(piez_interact.dge,normalized.lib.sizes = TRUE,log = TRUE)), las = 2,labels = "", xlim = range(-7,11), col = "cyan3")
+dotchart(t(cpm(cntl_interact.dge,normalized.lib.sizes = TRUE,log = TRUE)), las = 2,labels = "",xlim = range(-7,11),color = "coral2")
