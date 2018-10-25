@@ -2,19 +2,19 @@
 # Oct. 31, 2016
 # Standard processing of cranio metadata
 
-#library(corrgram)
+library(corrgram)
 
 processMetadataVal=function(plot=TRUE){
-  metadataTable = synTableQuery('SELECT * FROM syn7486948')
-  lookup = synTableQuery('SELECT * FROM syn7477113')
-  picardMetrics = read.delim(getFileLocation(synGet('syn8489352')),row.names = 1, header = TRUE,colClasses = c("character",rep("numeric",21)))
+  metadataTable = as.data.frame(synTableQuery('SELECT * FROM syn8548351',includeRowIdAndRowVersion = FALSE))
+  lookup = as.data.frame(synTableQuery('SELECT * FROM syn7477113',includeRowIdAndRowVersion=FALSE))
+  picardMetrics = read.delim(synGet('syn8489352')$path,row.names = 1, header = TRUE,colClasses = c("character",rep("numeric",21)))
   
   # join all
   picardMetrics$sampName = sapply(rownames(picardMetrics),function(x) {unlist(strsplit(x,split = "[.]"))[1]})
-  combined = merge(as.data.frame(lookup@values),y = picardMetrics,by.x = "Sample_Name",by.y = "sampName")
+  combined = merge(lookup,y = picardMetrics,by.x = "Sample_Name",by.y = "sampName")
   
   toFilter = c('Order', 'Space')
-  metadataFiltered = metadataTable@values[,-which(colnames(metadataTable@values)%in%toFilter)]
+  metadataFiltered = metadataTable[,-which(colnames(metadataTable)%in%toFilter)]
   allTogetherNow = merge(x=combined,y=metadataFiltered,by.x = "Investigator_Sample_Name",by.y = 'Sample_ID')
   rm(combined)
   
@@ -28,12 +28,13 @@ processMetadataVal=function(plot=TRUE){
   allTogetherNow$Diagnosis[grep("Coronal",allTogetherNow$Diagnosis)] = "Coronal"
   allTogetherNow$Diagnosis[grep("Lambdoid",allTogetherNow$Diagnosis)] = "Lambdoid"
   allTogetherNow$Diagnosis = as.factor(allTogetherNow$Diagnosis)
+  allTogetherNow$RNA_days_to_Harvest = as.numeric(as.character(allTogetherNow$RNA_days_to_Harvest))
   if (plot==TRUE) {
     
     op = par(mfrow = c(3,2))
-    hist(allTogetherNow$RNA_Days_to_Harvest)
-    hist(log(allTogetherNow$RNA_Days_to_Harvest))
-    allTogetherNow$RNA_Days_to_Harvest = log(allTogetherNow$RNA_Days_to_Harvest)
+    hist(allTogetherNow$RNA_days_to_Harvest)
+    hist(log(allTogetherNow$RNA_days_to_Harvest))
+    allTogetherNow$RNA_days_to_Harvest = log(allTogetherNow$RNA_days_to_Harvest)
     
     pie(table(allTogetherNow$Plate), main = "Plate")
     pie(table(allTogetherNow$Sex), main = "Sex")
